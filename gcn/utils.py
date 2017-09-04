@@ -33,6 +33,7 @@ def load_data(dataset_str):
                 objects.append(pkl.load(f))
 
     x, y, tx, ty, allx, ally, graph = tuple(objects)
+    #print(y.shape, ty.shape, ally.shape)
     test_idx_reorder = parse_index_file("data/ind.{}.test.index".format(dataset_str))
     test_idx_range = np.sort(test_idx_reorder)
 
@@ -149,3 +150,26 @@ def chebyshev_polynomials(adj, k):
         t_k.append(chebyshev_recurrence(t_k[-1], t_k[-2], scaled_laplacian))
 
     return sparse_to_tuple(t_k)
+
+
+def generate_batches(train_mask, batch_size):
+    # Find all non-zeros
+    observed = np.array(np.nonzero(train_mask)).flatten()
+    observed = np.random.permutation(observed)
+    masks = []
+    N = len(observed)
+    for i in range(0, N, batch_size):
+        obs_batch = observed[i:i+batch_size]
+        mask = np.zeros_like(train_mask)
+        mask[obs_batch] = True
+        masks.append(mask)
+    return masks
+
+def L_neighbour(mask, adj, L):
+    eadj = adj + sp.eye(adj.shape[0])
+    current_mask = mask
+    for i in range(L):
+        current_mask = eadj.dot(current_mask) > 0
+    return current_mask
+
+
