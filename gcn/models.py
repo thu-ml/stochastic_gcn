@@ -1,5 +1,6 @@
 from gcn.layers import *
 from gcn.metrics import *
+from gcn.inits import *
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
@@ -175,3 +176,115 @@ class GCN(Model):
 
     def predict(self):
         return tf.nn.softmax(self.outputs)
+    
+
+# -------------------------------------------------------------------------------------------------------------
+class MACGCN(Model):
+    def __init__(self, placeholders, input_dim, input_n, **kwargs):
+        super(MACGCN, self).__init__(**kwargs)
+
+        self.inputs = placeholders['features']
+        self.input_dim = input_dim
+        self.output_dim = placeholders['labels'].get_shape().as_list()[1]
+        self.placeholders = placeholders
+
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate)
+
+        self.acs = [self.inputs]
+        self.decoupled_layers = []
+        self.mac_loss = 0
+        self.input_n = input_n
+
+        self.build()
+
+        params = tf.trainable_variables()
+        for i in params:
+            print(i.name, i.get_shape())
+
+    def _mac_loss(self):
+        # Weight decay loss
+        for var in self.layers[0].vars.values():
+            self.mac_loss += FLAGS.weight_decay * tf.nn.l2_loss(var)
+
+        # Reconstruction loss
+        for i in range(1, len(self.acs)):
+            self.mac_loss += self.placeholders['lambda'] * tf.nn.l2_loss(self.acs[i] - self.mac_acts[i-1])
+
+        # Cross entropy error
+        self.mac_loss += masked_softmax_cross_entropy(self.mac_outputs, self.placeholders['labels'],
+                                                  self.placeholders['labels_mask'])
+
+    def _loss(self):
+        # Weight decay loss
+        for var in self.layers[0].vars.values():
+            self.loss += FLAGS.weight_decay * tf.nn.l2_loss(var)
+
+        # Cross entropy error
+        self.loss += masked_softmax_cross_entropy(self.outputs, self.placeholders['labels'],
+                                                  self.placeholders['labels_mask'])
+
+
+    def _prediction_difference(self):
+        diff = tf.nn.softmax(self.outputs) - tf.nn.softmax(self.mac_outputs)
+        self.pred_diff = tf.reduce_mean(tf.reduce_sum(tf.abs(diff), -1))
+
+
+    def _accuracy(self):
+        self.accuracy = masked_accuracy(self.outputs, self.placeholders['labels'],
+                                        self.placeholders['labels_mask'])
+
+    def _build(self):
+        # Create variables for hidden layers
+        self.acs.append(zeros(shape=(self.input_n, FLAGS.hidden1)))
+        
+        # Directed prediction
+        self.layers.append(GraphConvolution(input_dim=self.input_dim,
+                                            output_dim=FLAGS.hidden1,
+                                            placeholders=self.placeholders,
+                                            act=tf.nn.relu,
+                                            dropout=True,
+                                            sparse_inputs=True,
+                                            logging=self.logging))
+
+        self.layers.append(GraphConvolution(input_dim=FLAGS.hidden1,
+                                            output_dim=self.output_dim,
+                                            placeholders=self.placeholders,
+                                            act=lambda x: x,
+                                            dropout=True,
+                                            logging=self.logging))
+
+
+    def build(self):
+        """ Wrapper for _build() """
+        with tf.variable_scope(self.name):
+            self._build()
+
+        # Build sequential layer model
+        self.activations.append(self.inputs)
+        for layer in self.layers:
+            hidden = layer(self.activations[-1])
+            self.activations.append(hidden)
+        self.outputs = self.activations[-1]
+
+        self.mac_acts = []
+        for i, layer in enumerate(self.layers):
+            hidden = layer(self.acs[i])
+            self.mac_acts.append(hidden)
+        self.mac_outputs = self.mac_acts[-1]
+
+        # Store model variables for easy access
+        variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=self.name)
+        self.vars = {var.name: var for var in variables}
+
+        # Build metrics
+        self._loss()
+        self._mac_loss()
+        self._prediction_difference()
+        self._accuracy()
+
+        self.opt_op = self.optimizer.minimize(self.mac_loss)
+
+
+    def predict(self):
+        raise NotImplementedError
+        # return tf.nn.softmax(self.outputs)
