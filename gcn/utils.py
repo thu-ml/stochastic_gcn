@@ -96,7 +96,7 @@ def preprocess_features(features):
     rowsum = np.array(features.sum(1))
     r_inv = np.power(rowsum, -1).flatten()
     r_inv[np.isinf(r_inv)] = 0.
-    r_mat_inv = sp.diags(r_inv)
+    r_mat_inv = sp.diags(r_inv, 0)
     features = r_mat_inv.dot(features)
     return sparse_to_tuple(features)
 
@@ -107,7 +107,7 @@ def normalize_adj(adj):
     rowsum = np.array(adj.sum(1))
     d_inv_sqrt = np.power(rowsum, -0.5).flatten()
     d_inv_sqrt[np.isinf(d_inv_sqrt)] = 0.
-    d_mat_inv_sqrt = sp.diags(d_inv_sqrt)
+    d_mat_inv_sqrt = sp.diags(d_inv_sqrt, 0)
     return adj.dot(d_mat_inv_sqrt).transpose().dot(d_mat_inv_sqrt).tocoo()
 
 
