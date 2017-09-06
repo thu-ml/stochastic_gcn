@@ -4,6 +4,7 @@ import networkx as nx
 import scipy.sparse as sp
 from scipy.sparse.linalg.eigen.arpack import eigsh
 import sys
+import tensorflow as tf
 
 
 def parse_index_file(filename):
@@ -173,3 +174,22 @@ def L_neighbour(mask, adj, L):
     return current_mask
 
 
+def least_squares(A, B, reg):
+    D = int(A.get_shape()[1])
+    ATA = tf.matmul(A, A, transpose_a=True) + tf.eye(D) * reg
+    ATB = tf.matmul(A, B, transpose_a=True)
+    return tf.cholesky_solve(tf.cholesky(ATA), ATB)
+
+
+def least_squares_A(H, Z, W, gamma, beta):
+    # min_A gamma ||A-H||^2 + beta ||Z-AW||^2
+    D = int(W.get_shape()[0])
+    lhs = tf.transpose(gamma * tf.eye(D) + beta * tf.matmul(W, W, transpose_b=True))
+    rhs = tf.transpose(gamma * H + beta * tf.matmul(Z, W, transpose_b=True))
+    AT  = tf.cholesky_solve(tf.cholesky(lhs), rhs)
+    return tf.transpose(AT)
+
+
+def hinge_loss(Y, Z):
+    return tf.maximum(0.0, 1.0 - (2*Y-1)*Z)
+    # return tf.losses.hinge_loss(labels=Y, logits=Z, reduction=tf.losses.Reduction.NONE)
