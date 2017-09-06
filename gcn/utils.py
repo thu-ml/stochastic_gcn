@@ -191,5 +191,5 @@ def least_squares_A(H, Z, W, gamma, beta):
 
 
 def hinge_loss(Y, Z):
-    return tf.maximum(0.0, 1.0 - (2*Y-1)*Z)
-    # return tf.losses.hinge_loss(labels=Y, logits=Z, reduction=tf.losses.Reduction.NONE)
+    # return tf.maximum(0.0, 1.0 - (2*Y-1)*Z)
+    return tf.losses.hinge_loss(labels=Y, logits=Z, reduction=tf.losses.Reduction.NONE)
