@@ -153,6 +153,9 @@ class GCN(Model):
         self.loss += masked_softmax_cross_entropy(self.outputs, self.placeholders['labels'],
                                                   self.placeholders['labels_mask'])
 
+        # Entropy error
+        self.loss += FLAGS.unlabeled_weight * masked_entropy(self.outputs, 1-self.placeholders['labels_mask'])
+
     def _accuracy(self):
         self.accuracy = masked_accuracy(self.outputs, self.placeholders['labels'],
                                         self.placeholders['labels_mask'])

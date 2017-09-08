@@ -10,7 +10,7 @@ setup(name='gcn',
       download_url='https://github.com/tkipf/gcn',
       license='MIT',
       install_requires=['numpy',
-                        'tensorflow',
+                        'tensorflow-gpu',
                         'networkx',
                         'scipy'
                         ],
