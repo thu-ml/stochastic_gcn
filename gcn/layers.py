@@ -133,7 +133,7 @@ class GraphConvolution(Layer):
     """Graph convolution layer."""
     def __init__(self, input_dim, output_dim, placeholders, dropout=0.,
                  sparse_inputs=False, act=tf.nn.relu, bias=False,
-                 featureless=False, **kwargs):
+                 featureless=False, support=None, **kwargs):
         super(GraphConvolution, self).__init__(**kwargs)
 
         if dropout:
@@ -142,7 +142,10 @@ class GraphConvolution(Layer):
             self.dropout = 0.
 
         self.act = act
-        self.support = placeholders['support']
+        if support is None:
+            self.support = placeholders['support']
+        else:
+            self.support = support
         self.sparse_inputs = sparse_inputs
         self.featureless = featureless
         self.bias = bias
@@ -170,6 +173,7 @@ class GraphConvolution(Layer):
             x = tf.nn.dropout(x, 1-self.dropout)
 
         # convolve
+        # TODO swap the order of propagate and dense
         supports = list()
         for i in range(len(self.support)):
             if not self.featureless:

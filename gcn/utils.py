@@ -82,7 +82,7 @@ def sparse_to_tuple(sparse_mx):
         coords = np.vstack((mx.row, mx.col)).transpose()
         values = mx.data
         shape = mx.shape
-        return coords, values, shape
+        return coords.astype(np.int64), values, np.array(shape).astype(np.int64)
 
     if isinstance(sparse_mx, list):
         for i in range(len(sparse_mx)):
@@ -91,6 +91,18 @@ def sparse_to_tuple(sparse_mx):
         sparse_mx = to_tuple(sparse_mx)
 
     return sparse_mx
+
+
+def tuple_to_coo(tuple_mx):
+    def to_coo(t):
+        return sp.coo_matrix((t[1], (t[0][:,0],t[0][:,1])), t[2])
+    if isinstance(tuple_mx, list):
+        for i in range(len(tuple_mx)):
+            tuple_mx[i] = to_tuple(tuple_mx[i])
+    else:
+        tuple_mx = to_coo(tuple_mx)
+    return tuple_mx
+
 
 
 def preprocess_features(features):
@@ -127,6 +139,20 @@ def construct_feed_dict(features, support, labels, labels_mask, placeholders):
     feed_dict.update({placeholders['features']: features})
     feed_dict.update({placeholders['support'][i]: support[i] for i in range(len(support))})
     feed_dict.update({placeholders['num_features_nonzero']: features[1].shape})
+    return feed_dict
+
+
+def fast_construct_feed_dict(features, batch, labels, placeholders):
+    """Construct feed dictionary."""
+    supports = sparse_to_tuple(batch.adjs)
+    f = sparse_to_tuple(features[batch.fields[0]])
+    y = labels[batch.fields[-1]]
+
+    feed_dict = dict()
+    feed_dict.update({placeholders['labels']: y})
+    feed_dict.update({placeholders['features']: f})
+    feed_dict.update({placeholders['support_%d'%(i+1)][0]: supports[i] for i in range(len(supports))})
+    feed_dict.update({placeholders['num_features_nonzero']: f[1].shape})
     return feed_dict
 
 

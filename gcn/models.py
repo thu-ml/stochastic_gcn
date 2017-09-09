@@ -179,6 +179,57 @@ class GCN(Model):
 
     def predict(self):
         return tf.nn.softmax(self.outputs)
+
+
+# ----------------------------------------------------------
+class FastGCN(Model):
+    def __init__(self, placeholders, input_dim, **kwargs):
+        super(FastGCN, self).__init__(**kwargs)
+
+        self.inputs = placeholders['features']
+        self.input_dim = input_dim
+        self.output_dim = placeholders['labels'].get_shape().as_list()[1]
+        self.placeholders = placeholders
+
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate)
+
+        self.build()
+
+    def _loss(self):
+        # Weight decay loss
+        for var in self.layers[0].vars.values():
+            self.loss += FLAGS.weight_decay * tf.nn.l2_loss(var)
+
+        # Cross entropy error
+        self.loss += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
+            logits=self.outputs, labels=self.placeholders['labels']))
+
+    def _accuracy(self):
+        correct_prediction = tf.equal(tf.argmax(self.outputs, 1), 
+                                      tf.argmax(self.placeholders['labels'], 1))
+        self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+
+    def _build(self):
+
+        self.layers.append(GraphConvolution(input_dim=self.input_dim,
+                                            output_dim=FLAGS.hidden1,
+                                            placeholders=self.placeholders,
+                                            act=tf.nn.relu, 
+                                            dropout=True, 
+                                            sparse_inputs=True,
+                                            logging=self.logging,
+                                            support=self.placeholders['support_1']))
+
+        self.layers.append(GraphConvolution(input_dim=FLAGS.hidden1,
+                                            output_dim=self.output_dim,
+                                            placeholders=self.placeholders,
+                                            act=lambda x: x,
+                                            dropout=True,
+                                            logging=self.logging,
+                                            support=self.placeholders['support_2']))
+
+    def predict(self):
+        return tf.nn.softmax(self.outputs)
     
 
 # -------------------------------------------------------------------------------------------------------------
