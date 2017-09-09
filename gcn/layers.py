@@ -173,7 +173,6 @@ class GraphConvolution(Layer):
             x = tf.nn.dropout(x, 1-self.dropout)
 
         # convolve
-        # TODO swap the order of propagate and dense
         supports = list()
         for i in range(len(self.support)):
             if not self.featureless:
