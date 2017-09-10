@@ -3,18 +3,21 @@
 #include <algorithm>
 
 std::mt19937 generator;
+uniform_real_distribution<float> u01;
 
 struct Edge {
     int t;
     float w;
 };
 
-void schedule_c(int L, int V, int E, int N, int batch_size,
+void schedule_c(int L, int V, int E, int N, int batch_size, float dropconnect,
         int *d, int *e_s, int *e_t, float *e_w, 
         vector<int>& b_rows, vector<int>& b_cols, 
         vector<float>& b_data, vector<int>& b_offsets,
         vector<int>& r_fields, vector<int>& r_offsets)
 {
+    float scale = 1.0 / (1 - dropconnect);
+
     // Construct adjacency matrix
     vector<vector<Edge>> adj(V);
     for (int i = 0; i < E; i++)
@@ -43,14 +46,14 @@ void schedule_c(int L, int V, int E, int N, int batch_size,
 
             for (int i=0; i<current_rf.size(); i++) {
                 int s = current_rf[i];
-                for (auto e: adj[s]) {
+                for (auto e: adj[s]) if (u01(generator)>dropconnect) {
                     if (visited[e.t] == -1) {
                         visited[e.t] = new_rf.size();
                         new_rf.push_back(e.t);
                     }
                     b_rows.push_back(i);
                     b_cols.push_back(visited[e.t]);
-                    b_data.push_back(e.w);
+                    b_data.push_back(e.w * scale);
                 }
             }
             for (auto t: new_rf)

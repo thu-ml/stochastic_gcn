@@ -5,7 +5,7 @@ cimport numpy as np
 import numpy as np
 
 cdef extern from "scheduler.h":
-    void schedule_c(int L, int V, int E, int N, int batch_size,
+    void schedule_c(int L, int V, int E, int N, int batch_size, float dropconnect,
             int *d, int *e_s, int *e_t, float *e_w, 
             vector[int]& b_rows, vector[int]& b_cols, 
             vector[float]& b_data, vector[int]& b_offsets,
@@ -23,7 +23,7 @@ class Batch:
         self.fields = fields
         self.adjs = adjs
 
-def schedule(A, d, L, batch_size):
+def schedule(A, d, L, batch_size, dropconnect):
     # A: weighted adjacency matrix
     # d: array of data indices
     # L: number of levels
@@ -45,7 +45,7 @@ def schedule(A, d, L, batch_size):
     cdef vector[int]   r_fields
     cdef vector[int]   r_offsets
 
-    schedule_c(L, V, nnz, d.shape[0], batch_size,
+    schedule_c(L, V, nnz, d.shape[0], batch_size, dropconnect,
                &npd[0], &A_row_v[0], &A_col_v[0], &A_data_v[0],
                b_rows, b_cols, b_data, b_offsets, r_fields, r_offsets)
 
