@@ -31,7 +31,10 @@ flags.DEFINE_integer('max_degree', 3, 'Maximum Chebyshev polynomial degree.')
 flags.DEFINE_integer('batch_size', 200, 'Minibatch size for SGD')
 
 # Load data
-adj, features, y_train, y_val, y_test, train_mask, val_mask, test_mask = load_data(FLAGS.dataset)
+if FLAGS.dataset != 'nell':
+    adj, features, y_train, y_val, y_test, train_mask, val_mask, test_mask = load_data(FLAGS.dataset)
+else:
+    adj, features, y_train, y_val, y_test, train_mask, val_mask, test_mask = load_nell_data(FLAGS.dataset)
 y = y_train + y_val + y_test
 
 # Some preprocessing
