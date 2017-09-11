@@ -212,9 +212,24 @@ class VarianceReductedAggregator(Layer):
 
     def _call(self, inputs):
         old_activations = tf.gather(self.old_activation, self.input_fields)
+        norm = lambda x: tf.sqrt(tf.reduce_sum(tf.square(x)))
+        sim = tf.reduce_sum(inputs*old_activations) / norm(inputs) / norm(old_activations)
         output = dot(self.subsampled_support, inputs-old_activations, sparse=True) +\
                  dot(self.support,            self.old_activation, sparse=True)
+        output = tf.Print(output, [sim])
 
         self.post_updates.append((self.old_activation, self.input_fields, inputs))
         return output
 
+
+class PlainAggregator(Layer):
+    # H -> Z=AH
+    # Z = subsampled_support * inputs
+    def __init__(self, subsampled_support, **kwargs):
+        super(PlainAggregator, self).__init__(**kwargs)
+
+        self.subsampled_support = subsampled_support
+
+
+    def _call(self, inputs):
+        return dot(self.subsampled_support, inputs, sparse=True)

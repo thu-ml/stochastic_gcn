@@ -29,6 +29,7 @@ flags.DEFINE_float('unlabeled_weight', 0, 'Weight of unlabeled data.')
 flags.DEFINE_integer('early_stopping', 10, 'Tolerance for early stopping (# of epochs).')
 flags.DEFINE_integer('max_degree', 3, 'Maximum Chebyshev polynomial degree.')
 flags.DEFINE_integer('batch_size', 200, 'Minibatch size for SGD')
+flags.DEFINE_bool('vr', True, 'Variance reduction for vrgcn')
 
 # Load data
 if FLAGS.dataset != 'nell':
@@ -70,7 +71,7 @@ placeholders = {
 if FLAGS.model == 'fastgcn':
     model = model_func(placeholders, input_dim=features.shape[1], logging=True)
 else:
-    model = model_func(placeholders, input_dim=features.shape[1], num_data=features.shape[0], logging=True)
+    model = model_func(placeholders, input_dim=features.shape[1], num_data=features.shape[0], vr=FLAGS.vr, logging=True)
 
 # Initialize session
 sess = tf.Session()

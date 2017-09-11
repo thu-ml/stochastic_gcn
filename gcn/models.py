@@ -238,7 +238,7 @@ class FastGCN(Model):
     
 
 class VRGCN(Model):
-    def __init__(self, placeholders, input_dim, num_data, **kwargs):
+    def __init__(self, placeholders, input_dim, num_data, vr, **kwargs):
         super(VRGCN, self).__init__(**kwargs)
 
         self.inputs = placeholders['features']
@@ -246,6 +246,7 @@ class VRGCN(Model):
         self.num_data = num_data
         self.output_dim = placeholders['labels'].get_shape().as_list()[1]
         self.placeholders = placeholders
+        self.vr = vr
 
         self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate)
 
@@ -274,12 +275,16 @@ class VRGCN(Model):
                                  sparse_inputs=True,
                                  logging=self.logging))
 
-        self.layers.append(VarianceReductedAggregator(
-                                 num_data=self.num_data,
-                                 input_dim=FLAGS.hidden1,
-                                 input_fields=self.placeholders['hidden_fields'],
-                                 subsampled_support=self.placeholders['subsampled_support'],
-                                 support=self.placeholders['support']))
+        if self.vr:
+            self.layers.append(VarianceReductedAggregator(
+                                     num_data=self.num_data,
+                                     input_dim=FLAGS.hidden1,
+                                     input_fields=self.placeholders['hidden_fields'],
+                                     subsampled_support=self.placeholders['subsampled_support'],
+                                     support=self.placeholders['support']))
+        else:
+            self.layers.append(PlainAggregator(
+                                     subsampled_support=self.placeholders['subsampled_support']))
 
         self.layers.append(Dense(input_dim=FLAGS.hidden1,
                                  output_dim=self.output_dim,
