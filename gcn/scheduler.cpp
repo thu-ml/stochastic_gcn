@@ -16,8 +16,6 @@ void schedule_c(int L, int V, int E, int N, int batch_size, float dropconnect,
         vector<float>& b_data, vector<int>& b_offsets,
         vector<int>& r_fields, vector<int>& r_offsets)
 {
-    float scale = 1.0 / (1 - dropconnect);
-
     // Construct adjacency matrix
     vector<vector<Edge>> adj(V);
     for (int i = 0; i < E; i++)
@@ -46,14 +44,32 @@ void schedule_c(int L, int V, int E, int N, int batch_size, float dropconnect,
 
             for (int i=0; i<current_rf.size(); i++) {
                 int s = current_rf[i];
-                for (auto e: adj[s]) if (u01(generator)>dropconnect) {
-                    if (visited[e.t] == -1) {
-                        visited[e.t] = new_rf.size();
-                        new_rf.push_back(e.t);
+                if (dropconnect <= 1.0) {
+                    float scale = 1.0 / (1 - dropconnect);
+                    for (auto e: adj[s]) if (u01(generator)>dropconnect) {
+                        if (visited[e.t] == -1) {
+                            visited[e.t] = new_rf.size();
+                            new_rf.push_back(e.t);
+                        }
+                        b_rows.push_back(i);
+                        b_cols.push_back(visited[e.t]);
+                        b_data.push_back(e.w * scale);
                     }
-                    b_rows.push_back(i);
-                    b_cols.push_back(visited[e.t]);
-                    b_data.push_back(e.w * scale);
+                } else {
+                    int n_neighbour = min((int)dropconnect, (int)adj[s].size());
+                    float scale = (float)adj[s].size() / n_neighbour;
+                    // Randomly choose n_neighbour without replacement
+                    shuffle(adj[s].begin(), adj[s].end(), generator);
+                    for (int j=0; j<n_neighbour; j++) {
+                        const auto &e = adj[s][j];
+                        if (visited[e.t] == -1) {
+                            visited[e.t] = new_rf.size();
+                            new_rf.push_back(e.t);
+                        }
+                        b_rows.push_back(i);
+                        b_cols.push_back(visited[e.t]);
+                        b_data.push_back(e.w * scale);
+                    }
                 }
             }
             for (auto t: new_rf)

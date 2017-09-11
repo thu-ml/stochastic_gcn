@@ -36,6 +36,7 @@ if FLAGS.dataset != 'nell':
 else:
     adj, features, y_train, y_val, y_test, train_mask, val_mask, test_mask = load_nell_data(FLAGS.dataset)
 y = y_train + y_val + y_test
+print('Features shape = {}'.format(features.shape))
 
 # Some preprocessing
 features = tuple_to_coo(preprocess_features(features)).tocsr()
@@ -84,6 +85,7 @@ for epoch in range(FLAGS.epochs):
 
     t = time.time()
     for batch in batches:
+        print(batch.fields[0].shape)
         # Construct feed dictionary
         feed_dict = fast_construct_feed_dict(features, batch, y, placeholders)
         feed_dict.update({placeholders['dropout']: FLAGS.dropout})
