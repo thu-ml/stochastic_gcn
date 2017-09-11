@@ -6,7 +6,7 @@ import sys
 import tensorflow as tf
 
 from gcn.utils import *
-from gcn.models import FastGCN
+from gcn.models import FastGCN, VRGCN
 from scheduler import schedule
 
 # Set random seed
@@ -18,7 +18,7 @@ tf.set_random_seed(seed)
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 flags.DEFINE_string('dataset', 'cora', 'Dataset string.')  # 'cora', 'citeseer', 'pubmed'
-flags.DEFINE_string('model', 'gcn', 'Model string.')  # 'gcn', 'gcn_cheby', 'dense'
+flags.DEFINE_string('model', 'fastgcn', 'Model string.')  # 'fastgcn', 'vrgcn'
 flags.DEFINE_float('learning_rate', 0.01, 'Initial learning rate.')
 flags.DEFINE_integer('epochs', 200, 'Number of epochs to train.')
 flags.DEFINE_integer('hidden1', 16, 'Number of units in hidden layer 1.')
@@ -41,8 +41,13 @@ print('Features shape = {}'.format(features.shape))
 # Some preprocessing
 features = tuple_to_coo(preprocess_features(features)).tocsr()
 support = tuple_to_coo(preprocess_adj(adj)).astype(np.float32)
+support_csr = support.tocsr()
+Ax = support_csr.dot(features)
 num_supports = 1
-model_func = FastGCN
+if FLAGS.model == 'fastgcn':
+    model_func = FastGCN
+else:
+    model_func = VRGCN
 train_d = np.nonzero(train_mask)[0].astype(np.int32)
 test_d = np.nonzero(test_mask)[0].astype(np.int32)
 val_d = np.nonzero(val_mask)[0].astype(np.int32)
@@ -51,6 +56,9 @@ val_d = np.nonzero(val_mask)[0].astype(np.int32)
 placeholders = {
     'support_1': [tf.sparse_placeholder(tf.float32) for _ in range(num_supports)],
     'support_2': [tf.sparse_placeholder(tf.float32) for _ in range(num_supports)],
+    'support': tf.sparse_placeholder(tf.float32),
+    'subsampled_support': tf.sparse_placeholder(tf.float32),
+    'hidden_fields': tf.placeholder(tf.int32, shape=(None)),
     'features': tf.sparse_placeholder(tf.float32, shape=tf.constant(features.shape, dtype=tf.int64)),
     'labels': tf.placeholder(tf.float32, shape=(None, y_train.shape[1])),
     'labels_mask': tf.placeholder(tf.int32),
@@ -59,7 +67,10 @@ placeholders = {
 }
 
 # Create model
-model = model_func(placeholders, input_dim=features.shape[1], logging=True)
+if FLAGS.model == 'fastgcn':
+    model = model_func(placeholders, input_dim=features.shape[1], logging=True)
+else:
+    model = model_func(placeholders, input_dim=features.shape[1], num_data=features.shape[0], logging=True)
 
 # Initialize session
 sess = tf.Session()
@@ -69,7 +80,10 @@ sess = tf.Session()
 def evaluate(features, support, labels, data, placeholders):
     batches = schedule(support, data, L=2, batch_size=len(data), dropconnect=0.0)
     t_test = time.time()
-    feed_dict_val = fast_construct_feed_dict(features, batches[0], labels, placeholders)
+    if FLAGS.model == 'fastgcn':
+        feed_dict_val = fast_construct_feed_dict(features, batches[0], labels, placeholders)
+    else:
+        feed_dict_val = vr_construct_feed_dict(Ax, support_csr, batches[0], labels, placeholders)
     outs_val = sess.run([model.loss, model.accuracy], feed_dict=feed_dict_val)
     return outs_val[0], outs_val[1], (time.time() - t_test)
 
@@ -87,7 +101,10 @@ for epoch in range(FLAGS.epochs):
     for batch in batches:
         print(batch.fields[0].shape)
         # Construct feed dictionary
-        feed_dict = fast_construct_feed_dict(features, batch, y, placeholders)
+        if FLAGS.model == 'fastgcn':
+            feed_dict = fast_construct_feed_dict(features, batch, y, placeholders)
+        else:
+            feed_dict = vr_construct_feed_dict(Ax, support_csr, batch, y, placeholders)
         feed_dict.update({placeholders['dropout']: FLAGS.dropout})
 
         # Training step

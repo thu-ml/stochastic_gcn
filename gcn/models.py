@@ -45,6 +45,7 @@ class Model(object):
         self.activations.append(self.inputs)
         for layer in self.layers:
             hidden = layer(self.activations[-1])
+            print('Hidden shape = ', hidden.get_shape())
             self.activations.append(hidden)
         self.outputs = self.activations[-1]
 
@@ -56,7 +57,11 @@ class Model(object):
         self._loss()
         self._accuracy()
 
-        self.opt_op = self.optimizer.minimize(self.loss)
+        self.opt_op = [self.optimizer.minimize(self.loss)]
+        with tf.control_dependencies(self.opt_op):
+            for layer in self.layers:
+                for ref, indices, updates in layer.post_updates:
+                    self.opt_op.append(tf.scatter_update(ref, indices, updates))
 
     def predict(self):
         pass
@@ -231,6 +236,60 @@ class FastGCN(Model):
     def predict(self):
         return tf.nn.softmax(self.outputs)
     
+
+class VRGCN(Model):
+    def __init__(self, placeholders, input_dim, num_data, **kwargs):
+        super(VRGCN, self).__init__(**kwargs)
+
+        self.inputs = placeholders['features']
+        self.input_dim = input_dim
+        self.num_data = num_data
+        self.output_dim = placeholders['labels'].get_shape().as_list()[1]
+        self.placeholders = placeholders
+
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate)
+
+        self.build()
+
+    def _loss(self):
+        # Weight decay loss
+        for var in self.layers[0].vars.values():
+            self.loss += FLAGS.weight_decay * tf.nn.l2_loss(var)
+
+        # Cross entropy error
+        self.loss += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
+            logits=self.outputs, labels=self.placeholders['labels']))
+
+    def _accuracy(self):
+        correct_prediction = tf.equal(tf.argmax(self.outputs, 1), 
+                                      tf.argmax(self.placeholders['labels'], 1))
+        self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+
+    def _build(self):
+        self.layers.append(Dense(input_dim=self.input_dim,
+                                 output_dim=FLAGS.hidden1,
+                                 placeholders=self.placeholders,
+                                 act=tf.nn.relu,
+                                 dropout=True,
+                                 sparse_inputs=True,
+                                 logging=self.logging))
+
+        self.layers.append(VarianceReductedAggregator(
+                                 num_data=self.num_data,
+                                 input_dim=FLAGS.hidden1,
+                                 input_fields=self.placeholders['hidden_fields'],
+                                 subsampled_support=self.placeholders['subsampled_support'],
+                                 support=self.placeholders['support']))
+
+        self.layers.append(Dense(input_dim=FLAGS.hidden1,
+                                 output_dim=self.output_dim,
+                                 placeholders=self.placeholders,
+                                 act=lambda x: x,
+                                 dropout=True,
+                                 logging=self.logging))
+
+    def predict(self):
+        return tf.nn.softmax(self.outputs)
 
 # -------------------------------------------------------------------------------------------------------------
 class MACGCN(Model):

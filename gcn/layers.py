@@ -64,6 +64,7 @@ class Layer(object):
         logging = kwargs.get('logging', False)
         self.logging = logging
         self.sparse_inputs = False
+        self.post_updates = []
 
     def _call(self, inputs):
         return inputs
@@ -189,3 +190,31 @@ class GraphConvolution(Layer):
             output += self.vars['bias']
 
         return self.act(output)
+
+
+class VarianceReductedAggregator(Layer):
+    # H -> Z=AH
+    # Z = subsampled_support * (inputs - old[input_fields]) + support * old
+    # subsampled_support: outputs_fields * input_fields matrix
+    # support (A)       : outputs_fields * n            matrix
+    def __init__(self, num_data, input_dim,
+                 input_fields, 
+                 subsampled_support, support, **kwargs):
+        super(VarianceReductedAggregator, self).__init__(**kwargs)
+
+        self.input_fields = input_fields
+        self.subsampled_support = subsampled_support
+        self.support = support
+
+        with tf.variable_scope(self.name + '_vars'):
+            self.old_activation = tf.Variable(tf.zeros([num_data, input_dim]), trainable=False, name='activation')
+
+
+    def _call(self, inputs):
+        old_activations = tf.gather(self.old_activation, self.input_fields)
+        output = dot(self.subsampled_support, inputs-old_activations, sparse=True) +\
+                 dot(self.support,            self.old_activation, sparse=True)
+
+        self.post_updates.append((self.old_activation, self.input_fields, inputs))
+        return output
+

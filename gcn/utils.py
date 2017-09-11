@@ -191,6 +191,23 @@ def fast_construct_feed_dict(features, batch, labels, placeholders):
     return feed_dict
 
 
+def vr_construct_feed_dict(Ax, support, batch, labels, placeholders):
+    features = sparse_to_tuple(Ax[batch.fields[1]])
+    hidden_fields = batch.fields[1]
+    subsampled_support = sparse_to_tuple(batch.adjs[1])
+    support = sparse_to_tuple(support[batch.fields[2]])
+    y = labels[batch.fields[-1]]
+
+    feed_dict = dict()
+    feed_dict.update({placeholders['labels']: y})
+    feed_dict.update({placeholders['features']: features})
+    feed_dict.update({placeholders['hidden_fields']: hidden_fields})
+    feed_dict.update({placeholders['support']: support})
+    feed_dict.update({placeholders['subsampled_support']: subsampled_support})
+    feed_dict.update({placeholders['num_features_nonzero']: features[1].shape})
+    return feed_dict
+
+
 def chebyshev_polynomials(adj, k):
     """Calculate Chebyshev polynomials up to order k. Return a list of sparse matrices (tuple representation)."""
     print("Calculating Chebyshev polynomials up to order {}...".format(k))
