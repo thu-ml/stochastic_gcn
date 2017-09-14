@@ -1,10 +1,13 @@
 import numpy as np
 import pickle as pkl
 import networkx as nx
+from networkx.readwrite import json_graph
 import scipy.sparse as sp
 from scipy.sparse.linalg.eigen.arpack import eigsh
 import sys
 import tensorflow as tf
+import json
+from time import time
 
 
 def parse_index_file(filename):
@@ -107,6 +110,71 @@ def load_nell_data(dataset_str):
     y_test[test_mask, :] = labels[test_mask, :]
 
     return adj, features, y_train, y_val, y_test, train_mask, val_mask, test_mask
+
+
+def load_graphsage_data(prefix, normalize=True):
+    print('Loading data...')
+    start_time = time()
+
+    G_data = json.load(open(prefix + "-G.json"))
+    G = json_graph.node_link_graph(G_data)
+    if isinstance(G.nodes()[0], int):
+        conversion = lambda n : int(n)
+    else:
+        conversion = lambda n : n
+
+    feats = np.load(prefix + "-feats.npy")
+    id_map = json.load(open(prefix + "-id_map.json"))
+    id_map = {conversion(k):int(v) for k,v in id_map.iteritems()}
+    walks = []
+    class_map = json.load(open(prefix + "-class_map.json"))
+    if isinstance(class_map.values()[0], list):
+        lab_conversion = lambda n : n
+    else:
+        lab_conversion = lambda n : int(n)
+
+    class_map = {conversion(k): lab_conversion(v) for k,v in class_map.iteritems()}
+
+    # Construct adjacency matrix
+    print("Loaded data ({} seconds).. now preprocessing..".format(time()-start_time))
+    start_time = time()
+
+    edges      = [(id_map[edge[0]], id_map[edge[1]]) for edge in G.edges_iter()]
+    num_data   = len(id_map)
+    val_data   = np.array([id_map[n] for n in G.nodes_iter() if G.node[n]['val']], dtype=np.int32)
+    test_data  = np.array([id_map[n] for n in G.nodes_iter() if G.node[n]['test']], dtype=np.int32)
+    is_train   = np.ones((num_data), dtype=np.bool)
+    is_train[val_data] = False
+    is_train[test_data] = False
+    train_data = np.array([n for n in range(num_data) if is_train[n]], dtype=np.int32)
+    
+    train_edges = [(e[0], e[1]) for e in edges if is_train[e[0]] and is_train[e[1]]]
+    edges       = np.array(edges, dtype=np.int32)
+    train_edges = np.array(train_edges, dtype=np.int32)
+
+    # Process labels
+    if isinstance(class_map.values()[0], list):
+        num_classes = len(class_map.values()[0])
+        labels = np.zeros((num_data, num_classes), dtype=np.float32)
+        for k in class_map.keys():
+            labels[id_map[k], :] = np.array(class_map[k])
+    else:
+        num_classes = len(set(class_map.values()))
+        labels = np.zeros((num_data, num_classes), dtype=np.float32)
+        for k in class_map.keys():
+            labels[id_map[k], class_map[k]] = 1
+
+    if normalize:
+        from sklearn.preprocessing import StandardScaler
+        train_ids = np.array([id_map[n] for n in G.nodes() if not G.node[n]['val'] and not G.node[n]['test']])
+        train_feats = feats[train_ids]
+        scaler = StandardScaler()
+        scaler.fit(train_feats)
+        feats = scaler.transform(feats)
+
+    print("Done. {} seconds.".format(time()-start_time))
+
+    return num_data, edges, train_edges, feats, labels, train_data, val_data, test_data
 
 
 def sparse_to_tuple(sparse_mx):
