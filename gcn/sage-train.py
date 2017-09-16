@@ -20,12 +20,12 @@ flags = tf.app.flags
 FLAGS = flags.FLAGS
 flags.DEFINE_string('dataset', 'reddit', 'Dataset string.')  # 'cora', 'citeseer', 'pubmed'
 flags.DEFINE_string('model', 'fastgcn', 'Model string.')  # 'fastgcn', 'vrgcn'
-flags.DEFINE_float('learning_rate', 0.01, 'Initial learning rate.')
+flags.DEFINE_float('learning_rate', 0.001, 'Initial learning rate.')
 flags.DEFINE_integer('epochs', 200, 'Number of epochs to train.')
 flags.DEFINE_integer('hidden1', 128, 'Number of units in hidden layer 1.')
-flags.DEFINE_float('dropout', 0.0, 'Dropout rate (1 - keep probability).')
+flags.DEFINE_float('dropout', 0.5, 'Dropout rate (1 - keep probability).')
 flags.DEFINE_float('weight_decay', 0.0, 'Weight for L2 loss on embedding matrix.')
-flags.DEFINE_integer('early_stopping', 10, 'Tolerance for early stopping (# of epochs).')
+flags.DEFINE_integer('early_stopping', 100, 'Tolerance for early stopping (# of epochs).')
 flags.DEFINE_integer('max_degree', 3, 'Maximum Chebyshev polynomial degree.')
 flags.DEFINE_integer('batch_size', 512, 'Minibatch size for SGD')
 flags.DEFINE_integer('num_layers', 2, 'Number of layers')
@@ -87,8 +87,8 @@ sess.run(tf.global_variables_initializer())
 print('Finished in {} seconds'.format(time()-t))
 
 cost_val = []
-avg_loss = Averager(1000)
-avg_acc  = Averager(1000)
+avg_loss = Averager(100)
+avg_acc  = Averager(100)
 
 # Train model
 for epoch in range(FLAGS.epochs):
