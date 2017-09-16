@@ -422,8 +422,8 @@ class GraphSAGE(Model):
             train_features = train_adj.dot(features)
             test_features  = test_adj.dot(features)
 
-            self.train_inputs = tf.Variable(train_features, trainable=False)
-            self.test_inputs  = tf.Variable(test_features,  trainable=False)
+            self.train_inputs = tf.Variable(tf.zeros(train_features.shape), trainable=False)
+            self.test_inputs  = tf.Variable(tf.zeros(test_features.shape),  trainable=False)
             self.self_inputs  = tf.Variable(features,       trainable=False)
             self.nbr_inputs   = tf.cond(placeholders['is_training'], 
                                         lambda: self.train_inputs, 
@@ -442,9 +442,11 @@ class GraphSAGE(Model):
         self.output_dim = placeholders['labels'].get_shape().as_list()[1]
         self.placeholders = placeholders
 
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate)
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate, beta1=FLAGS.beta1, beta2=FLAGS.beta2)
 
         self.build()
+        self.train_features = train_features
+        self.test_features  = test_features
 
     def _loss(self):
         # Weight decay loss
@@ -510,15 +512,16 @@ class NeighbourMLP(Model):
         # Create all the features
         def _create_features(X, A):
             features = [X]
-            for i in range(L):
+            print('Hops = {}'.format(FLAGS.num_hops))
+            for i in range(FLAGS.num_hops):
                 features.append(A.dot(features[-1]))
             return np.hstack(features)
 
-        train_features = train_adj.dot(features)
-        test_features  = test_adj.dot(features)
+        train_features = _create_features(features, train_adj)
+        test_features  = _create_features(features, test_adj)
 
-        self.train_inputs = tf.Variable(train_features, trainable=False)
-        self.test_inputs  = tf.Variable(test_features,  trainable=False)
+        self.train_inputs = tf.Variable(tf.zeros(train_features.shape), trainable=False)
+        self.test_inputs  = tf.Variable(tf.zeros(test_features.shape),  trainable=False)
         self.inputs       = tf.cond(placeholders['is_training'], 
                                         lambda: self.train_inputs, 
                                         lambda: self.test_inputs)
@@ -529,9 +532,11 @@ class NeighbourMLP(Model):
         self.output_dim = placeholders['labels'].get_shape().as_list()[1]
         self.placeholders = placeholders
 
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate)
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate, beta1=FLAGS.beta1, beta2=FLAGS.beta2)
 
         self.build()
+        self.train_features = train_features
+        self.test_features  = test_features
 
     def _loss(self):
         # Weight decay loss

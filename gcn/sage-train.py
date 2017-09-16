@@ -9,6 +9,7 @@ from gcn.utils import *
 from gcn.models import GraphSAGE, NeighbourMLP
 from scheduler import PyScheduler
 from sklearn.metrics import f1_score
+from tensorflow.contrib.opt import ScipyOptimizerInterface
 
 # Set random seed
 seed = 123
@@ -28,7 +29,10 @@ flags.DEFINE_float('weight_decay', 0.0, 'Weight for L2 loss on embedding matrix.
 flags.DEFINE_integer('early_stopping', 100, 'Tolerance for early stopping (# of epochs).')
 flags.DEFINE_integer('batch_size', 512, 'Minibatch size for SGD')
 flags.DEFINE_integer('num_layers', 2, 'Number of layers')
+flags.DEFINE_integer('num_hops', 3, 'Number of neighbour hops')
 flags.DEFINE_bool('vr', True, 'Variance reduction for vrgcn')
+flags.DEFINE_float('beta1', 0.9, 'Beta1 for Adam')
+flags.DEFINE_float('beta2', 0.999, 'Beta2 for Adam')
 
 # Load data
 num_data, train_adj, full_adj, features, labels, train_d, val_d, test_d = \
@@ -46,11 +50,13 @@ placeholders = {
     'labels': tf.placeholder(tf.float32, shape=(None, labels.shape[1]), 
               name='labels'),
     'dropout': tf.placeholder_with_default(0., shape=(), name='dropout'),
-    'is_training': tf.placeholder(tf.bool, shape=(), name='is_training')
+    'is_training': tf.placeholder(tf.bool, shape=(), name='is_training'),
+    'features' : tf.placeholder(tf.float32, shape=(None, None),
+                    name='features')
 }
 
 if L==2:
-    train_degrees   = np.array([1, 1], dtype=np.int32)
+    train_degrees   = np.array([1, 20], dtype=np.int32)
     test_degrees    = np.array([1, 1000], dtype=np.int32)
 else:
     train_degrees   = np.array([1, 1, 1], dtype=np.int32)
@@ -91,56 +97,105 @@ def evaluate(data):
 print('Loading data to GPU...')
 t = time()
 sess.run(tf.global_variables_initializer())
+sess.run(tf.assign(model.train_inputs, placeholders['features']),
+         feed_dict={placeholders['features']: model.train_features})
+sess.run(tf.assign(model.test_inputs,  placeholders['features']),
+         feed_dict={placeholders['features']: model.test_features})
 print('Finished in {} seconds'.format(time()-t))
 
 cost_val = []
 avg_loss = Averager(100)
 avg_acc  = Averager(100)
 
-# Train model
-for epoch in range(FLAGS.epochs):
-    train_sch.shuffle()
-
-    t = time()
-    iter = 0
-    while True:
-        iter += 1
-        t1 = time()
-        feed_dict = train_sch.minibatch(FLAGS.batch_size)
-        tsch = time() - t1
-        if feed_dict==None:
+def SGDTrain():
+    # Train model
+    for epoch in range(FLAGS.epochs):
+        train_sch.shuffle()
+    
+        t = time()
+        iter = 0
+        tsch = 0
+        while True:
+            iter += 1
+            t1 = time()
+            feed_dict = train_sch.minibatch(FLAGS.batch_size)
+            tsch += time() - t1
+            if feed_dict==None:
+                break
+            feed_dict.update({placeholders['dropout']: FLAGS.dropout})
+            feed_dict[placeholders['is_training']] = True
+    
+            # Training step
+            outs = sess.run([model.opt_op, model.loss, model.accuracy], feed_dict=feed_dict)
+            avg_loss.add(outs[1])
+            avg_acc .add(outs[2])
+            if iter % 100 == 0:
+                print(avg_loss.mean(), avg_acc.mean(), tsch, 
+                      feed_dict[placeholders['adj'][0]][0].shape, features.shape)
+    
+        # Validation
+        cost, acc, micro, macro, duration = evaluate(val_d)
+        cost_val.append(cost)
+    
+        # Print results
+        print("Epoch:", '%04d' % (epoch + 1), 
+              "train_loss=", "{:.5f}".format(avg_loss.mean()),
+              "train_acc=", "{:.5f}".format(avg_acc.mean()), 
+              "val_loss=", "{:.5f}".format(cost),
+              "val_acc=", "{:.5f}".format(acc), 
+              "mi F1={:.5f} ma F1={:.5f} ".format(micro, macro),
+              "time=", "{:.5f}".format(time() - t),
+              "(sch {:.5f} s)".format(tsch))
+    
+        if epoch > FLAGS.early_stopping and cost_val[-1] > np.mean(cost_val[-(FLAGS.early_stopping+1):-1]):
+            print("Early stopping...")
             break
-        feed_dict.update({placeholders['dropout']: FLAGS.dropout})
-        feed_dict[placeholders['is_training']] = True
-
-        # Training step
-        outs = sess.run([model.opt_op, model.loss, model.accuracy], feed_dict=feed_dict)
-        avg_loss.add(outs[1])
-        avg_acc .add(outs[2])
-        if iter % 100 == 0:
-            print(avg_loss.mean(), avg_acc.mean(), tsch, 
-                  feed_dict[placeholders['adj'][0]][0].shape, features.shape)
-
-    # Validation
-    cost, acc, micro, macro, duration = evaluate(val_d)
-    cost_val.append(cost)
-
-    # Print results
-    print("Epoch:", '%04d' % (epoch + 1), 
-          "train_loss=", "{:.5f}".format(avg_loss.mean()),
-          "train_acc=", "{:.5f}".format(avg_acc.mean()), 
-          "val_loss=", "{:.5f}".format(cost),
-          "val_acc=", "{:.5f}".format(acc), 
+    
+    print("Optimization Finished!")
+    
+    # Testing
+    test_cost, test_acc, micro, macro, test_duration = evaluate(test_d)
+    print("Test set results:", "cost=", "{:.5f}".format(test_cost),
+          "accuracy=", "{:.5f}".format(test_acc), 
           "mi F1={:.5f} ma F1={:.5f} ".format(micro, macro),
-          "time=", "{:.5f}".format(time() - t))
+          "time=", "{:.5f}".format(test_duration))
 
-    if epoch > FLAGS.early_stopping and cost_val[-1] > np.mean(cost_val[-(FLAGS.early_stopping+1):-1]):
-        print("Early stopping...")
-        break
+def LBFGSTrain():
+    print(tf.trainable_variables())
+    optimizer = ScipyOptimizerInterface(model.loss, options={'maxiter': 100})
+    feed_dict = train_sch.minibatch(FLAGS.batch_size)
+    feed_dict.update({placeholders['dropout']: FLAGS.dropout})
+    feed_dict[placeholders['is_training']] = True
 
-print("Optimization Finished!")
+    def lcallback(loss, acc):
+        print('Training loss = {:.4f} acc = {:.4f}'.format(loss, acc))
 
-# Testing
-test_cost, test_acc, test_duration = evaluate(test_d)
-print("Test set results:", "cost=", "{:.5f}".format(test_cost),
-      "accuracy=", "{:.5f}".format(test_acc), "time=", "{:.5f}".format(test_duration))
+    for i in range(3):
+        optimizer.minimize(sess,
+                feed_dict=feed_dict,
+                fetches=[model.loss, model.accuracy],
+                loss_callback=lcallback)
+
+        test_feed_dict = eval_sch.batch(val_d)
+        test_feed_dict[placeholders['is_training']] = False
+
+        t_test = time()
+        los, acc, prd = sess.run([model.loss, model.accuracy, pred], 
+                                 feed_dict=test_feed_dict)
+        micro, macro  = calc_f1(prd, test_feed_dict[placeholders['labels']])
+        print('Val loss = {:.4f}, acc = {:.4f}, micro = {:.4f}, macro = {:.4f}'
+                .format(los, acc, micro, macro))
+
+
+        test_feed_dict = eval_sch.batch(test_d)
+        test_feed_dict[placeholders['is_training']] = False
+
+        t_test = time()
+        los, acc, prd = sess.run([model.loss, model.accuracy, pred], 
+                                 feed_dict=test_feed_dict)
+        micro, macro  = calc_f1(prd, test_feed_dict[placeholders['labels']])
+        print('Test loss = {:.4f}, acc = {:.4f}, micro = {:.4f}, macro = {:.4f}'
+                .format(los, acc, micro, macro))
+
+# LBFGSTrain()
+SGDTrain()
