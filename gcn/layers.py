@@ -1,5 +1,6 @@
 from gcn.inits import *
 import tensorflow as tf
+from tensorflow.contrib import layers
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
@@ -115,10 +116,10 @@ class Dense(Layer):
         x = inputs
 
         # dropout
-        if self.sparse_inputs:
-            x = sparse_dropout(x, 1-self.dropout, self.num_features_nonzero)
-        else:
-            x = tf.nn.dropout(x, 1-self.dropout)
+        # if self.sparse_inputs:
+        #     x = sparse_dropout(x, 1-self.dropout, self.num_features_nonzero)
+        # else:
+        #     x = tf.nn.dropout(x, 1-self.dropout)
 
         # transform
         output = dot(x, self.vars['weights'], sparse=self.sparse_inputs)
@@ -247,4 +248,15 @@ class PlainAggregator(Layer):
         a_neighbour = dot(self.adj, inputs, sparse=True)
         a_self      = inputs[:tf.shape(self.ofield)[0], :]
         return tf.concat((a_self, a_neighbour), axis=1)
+
+class Dropout(Layer):
+    def __init__(self, keep_prob, is_training, **kwargs):
+        super(Dropout, self).__init__(**kwargs)
+
+        self.keep_prob   = keep_prob
+        self.is_training = is_training
+
+    def _call(self, inputs):
+        return layers.dropout(inputs, self.keep_prob, 
+                                      is_training=self.is_training)
 

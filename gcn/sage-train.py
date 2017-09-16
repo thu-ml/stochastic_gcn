@@ -49,11 +49,12 @@ placeholders = {
     'is_training': tf.placeholder(tf.bool, shape=(), name='is_training')
 }
 
-degrees   = np.array([1, 200], dtype=np.int32)
+train_degrees   = np.array([1, 1], dtype=np.int32)
+test_degrees    = np.array([1, 1000], dtype=np.int32)
 model     = GraphSAGE(placeholders, features, train_adj, full_adj)
 pred      = model.predict()
-train_sch = PyScheduler(train_adj, labels, L, degrees, placeholders, train_d)
-eval_sch  = PyScheduler(full_adj, labels, L, degrees, placeholders)
+train_sch = PyScheduler(train_adj, labels, L, train_degrees, placeholders, train_d)
+eval_sch  = PyScheduler(full_adj,  labels, L, test_degrees,  placeholders)
 
 
 # Initialize session

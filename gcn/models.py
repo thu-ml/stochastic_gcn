@@ -471,21 +471,23 @@ class GraphSAGE(Model):
         else:
             self.layers.append(GatherAggregator(fields[1], name='gather'))
 
+        self.layers.append(Dropout(1-self.placeholders['dropout'],
+                                   self.placeholders['is_training']))
         self.layers.append(Dense(input_dim=self.input_dim*2,
                                  output_dim=FLAGS.hidden1,
                                  placeholders=self.placeholders,
                                  act=tf.nn.relu,
-                                 dropout=True,
                                  logging=self.logging,
                                  name='dense1'))
 
         self.layers.append(PlainAggregator(adjs[1], fields[1], fields[2], 
                                            name='agg2'))
+        self.layers.append(Dropout(1-self.placeholders['dropout'],
+                                   self.placeholders['is_training']))
         self.layers.append(Dense(input_dim=FLAGS.hidden1*2,
                                  output_dim=self.output_dim,
                                  placeholders=self.placeholders,
                                  act=lambda x: x,
-                                 dropout=True,
                                  logging=self.logging,
                                  name='dense2'))
 
