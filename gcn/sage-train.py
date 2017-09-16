@@ -6,7 +6,7 @@ import sys
 import tensorflow as tf
 
 from gcn.utils import *
-from gcn.models import GraphSAGE
+from gcn.models import GraphSAGE, NeighbourMLP
 from scheduler import PyScheduler
 from sklearn.metrics import f1_score
 
@@ -19,7 +19,7 @@ tf.set_random_seed(seed)
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 flags.DEFINE_string('dataset', 'reddit', 'Dataset string.')  # 'cora', 'citeseer', 'pubmed'
-flags.DEFINE_string('model', 'fastgcn', 'Model string.')  # 'fastgcn', 'vrgcn'
+flags.DEFINE_string('model', 'graphsage', 'Model string.')  # 'graphsage', 'mlp'
 flags.DEFINE_float('learning_rate', 0.001, 'Initial learning rate.')
 flags.DEFINE_integer('epochs', 200, 'Number of epochs to train.')
 flags.DEFINE_integer('hidden1', 128, 'Number of units in hidden layer 1.')
@@ -49,9 +49,17 @@ placeholders = {
     'is_training': tf.placeholder(tf.bool, shape=(), name='is_training')
 }
 
-train_degrees   = np.array([1, 1], dtype=np.int32)
-test_degrees    = np.array([1, 1000], dtype=np.int32)
-model     = GraphSAGE(placeholders, features, train_adj, full_adj)
+if L==2:
+    train_degrees   = np.array([1, 1], dtype=np.int32)
+    test_degrees    = np.array([1, 1000], dtype=np.int32)
+else:
+    train_degrees   = np.array([1, 1, 1], dtype=np.int32)
+    test_degrees    = np.array([1, 1, 1], dtype=np.int32)
+
+if FLAGS.model == 'graphsage':
+    model     = GraphSAGE(L, placeholders, features, train_adj, full_adj)
+else:
+    model     = NeighbourMLP(L, placeholders, features, train_adj, full_adj)
 pred      = model.predict()
 train_sch = PyScheduler(train_adj, labels, L, train_degrees, placeholders, train_d)
 eval_sch  = PyScheduler(full_adj,  labels, L, test_degrees,  placeholders)

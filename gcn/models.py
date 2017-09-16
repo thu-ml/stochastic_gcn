@@ -410,9 +410,10 @@ class MACGCN(Model):
 
 # -----------------------------------------------
 class GraphSAGE(Model):
-    def __init__(self, placeholders, features, train_adj=None, test_adj=None, **kwargs):
+    def __init__(self, L, placeholders, features, train_adj=None, test_adj=None, **kwargs):
         super(GraphSAGE, self).__init__(**kwargs)
 
+        self.L = L
         if train_adj is not None:
             # Preprocess first aggregation
             print('Preprocessing first aggregation')
@@ -471,17 +472,19 @@ class GraphSAGE(Model):
         else:
             self.layers.append(GatherAggregator(fields[1], name='gather'))
 
-        self.layers.append(Dropout(1-self.placeholders['dropout'],
-                                   self.placeholders['is_training']))
-        self.layers.append(Dense(input_dim=self.input_dim*2,
-                                 output_dim=FLAGS.hidden1,
-                                 placeholders=self.placeholders,
-                                 act=tf.nn.relu,
-                                 logging=self.logging,
-                                 name='dense1'))
+        for l in range(1, self.L):
+            input_dim = self.input_dim if l==1 else FLAGS.hidden1
+            self.layers.append(Dropout(1-self.placeholders['dropout'],
+                                       self.placeholders['is_training']))
+            self.layers.append(Dense(input_dim=input_dim*2,
+                                     output_dim=FLAGS.hidden1,
+                                     placeholders=self.placeholders,
+                                     act=tf.nn.relu,
+                                     logging=self.logging,
+                                     name='dense%d'%l))
+            self.layers.append(PlainAggregator(adjs[l], fields[l], fields[l+1], 
+                                               name='agg%d'%(l+1)))
 
-        self.layers.append(PlainAggregator(adjs[1], fields[1], fields[2], 
-                                           name='agg2'))
         self.layers.append(Dropout(1-self.placeholders['dropout'],
                                    self.placeholders['is_training']))
         self.layers.append(Dense(input_dim=FLAGS.hidden1*2,
@@ -490,6 +493,84 @@ class GraphSAGE(Model):
                                  act=lambda x: x,
                                  logging=self.logging,
                                  name='dense2'))
+
+    def predict(self):
+        return tf.nn.softmax(self.outputs)
+
+# -----------------------------------------------
+class NeighbourMLP(Model):
+    def __init__(self, L, placeholders, features, train_adj, test_adj, **kwargs):
+        super(NeighbourMLP, self).__init__(**kwargs)
+
+        self.L = L
+        # Preprocess aggregation
+        print('Preprocessing aggregations')
+        start_t = time()
+
+        # Create all the features
+        def _create_features(X, A):
+            features = [X]
+            for i in range(L):
+                features.append(A.dot(features[-1]))
+            return np.hstack(features)
+
+        train_features = train_adj.dot(features)
+        test_features  = test_adj.dot(features)
+
+        self.train_inputs = tf.Variable(train_features, trainable=False)
+        self.test_inputs  = tf.Variable(test_features,  trainable=False)
+        self.inputs       = tf.cond(placeholders['is_training'], 
+                                        lambda: self.train_inputs, 
+                                        lambda: self.test_inputs)
+        self.input_dim    = train_features.shape[1]
+        print('Finished in {} seconds.'.format(time() - start_t))
+
+        self.num_data = features.shape[0]
+        self.output_dim = placeholders['labels'].get_shape().as_list()[1]
+        self.placeholders = placeholders
+
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate)
+
+        self.build()
+
+    def _loss(self):
+        # Weight decay loss
+        for var in self.layers[0].vars.values():
+            self.loss += FLAGS.weight_decay * tf.nn.l2_loss(var)
+
+        # Cross entropy error
+        self.loss += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
+            logits=self.outputs, labels=self.placeholders['labels']))
+
+    def _accuracy(self):
+        correct_prediction = tf.equal(tf.argmax(self.outputs, 1), 
+                                      tf.argmax(self.placeholders['labels'], 1))
+        self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+
+    def _build(self):
+        # Aggregate
+        field = self.placeholders['fields'][-1]
+        self.layers.append(GatherAggregator(field, name='gather'))
+
+        for l in range(0, self.L-1):
+            input_dim = self.input_dim if l==0 else FLAGS.hidden1
+            self.layers.append(Dropout(1-self.placeholders['dropout'],
+                                       self.placeholders['is_training']))
+            self.layers.append(Dense(input_dim=input_dim,
+                                     output_dim=FLAGS.hidden1,
+                                     placeholders=self.placeholders,
+                                     act=tf.nn.relu,
+                                     logging=self.logging,
+                                     name='dense%d'%l))
+
+        self.layers.append(Dropout(1-self.placeholders['dropout'],
+                                   self.placeholders['is_training']))
+        self.layers.append(Dense(input_dim=FLAGS.hidden1,
+                                 output_dim=self.output_dim,
+                                 placeholders=self.placeholders,
+                                 act=lambda x: x,
+                                 logging=self.logging,
+                                 name='dense%d'%(self.L-1)))
 
     def predict(self):
         return tf.nn.softmax(self.outputs)

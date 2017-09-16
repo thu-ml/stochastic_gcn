@@ -87,7 +87,7 @@ class Layer(object):
 class Dense(Layer):
     """Dense layer."""
     def __init__(self, input_dim, output_dim, placeholders, dropout=0., sparse_inputs=False,
-                 act=tf.nn.relu, bias=False, featureless=False, **kwargs):
+                 act=tf.nn.relu, norm=True, bias=False, featureless=False, **kwargs):
         super(Dense, self).__init__(**kwargs)
 
         if dropout:
@@ -99,6 +99,7 @@ class Dense(Layer):
         self.sparse_inputs = sparse_inputs
         self.featureless = featureless
         self.bias = bias
+        self.norm = norm
 
         # helper variable for sparse dropout
         self.num_features_nonzero = placeholders.get('num_features_nonzero', None)
@@ -127,6 +128,9 @@ class Dense(Layer):
         # bias
         if self.bias:
             output += self.vars['bias']
+
+        if self.norm:
+            output = layers.layer_norm(output)
 
         return self.act(output)
 
@@ -260,3 +264,9 @@ class Dropout(Layer):
         return layers.dropout(inputs, self.keep_prob, 
                                       is_training=self.is_training)
 
+class LayerNorm(Layer):
+    def __init__(self, **kwargs):
+        super(LayerNorm, self).__init__(**kwargs)
+
+    def _call(self, inputs):
+        return layers.layer_norm(inputs)
