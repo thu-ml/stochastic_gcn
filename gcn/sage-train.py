@@ -26,7 +26,6 @@ flags.DEFINE_integer('hidden1', 128, 'Number of units in hidden layer 1.')
 flags.DEFINE_float('dropout', 0.5, 'Dropout rate (1 - keep probability).')
 flags.DEFINE_float('weight_decay', 0.0, 'Weight for L2 loss on embedding matrix.')
 flags.DEFINE_integer('early_stopping', 100, 'Tolerance for early stopping (# of epochs).')
-flags.DEFINE_integer('max_degree', 3, 'Maximum Chebyshev polynomial degree.')
 flags.DEFINE_integer('batch_size', 512, 'Minibatch size for SGD')
 flags.DEFINE_integer('num_layers', 2, 'Number of layers')
 flags.DEFINE_bool('vr', True, 'Variance reduction for vrgcn')
@@ -38,9 +37,6 @@ print('Features shape = {}'.format(features.shape))
 
 L = FLAGS.num_layers
 
-# Some preprocessing
-# Ax = train_adj.dot(features)
-
 # Define placeholders
 placeholders = {
     'adj':    [tf.sparse_placeholder(tf.float32, name='adj_%d'%l) 
@@ -49,11 +45,12 @@ placeholders = {
                for l in range(L+1)],
     'labels': tf.placeholder(tf.float32, shape=(None, labels.shape[1]), 
               name='labels'),
-    'dropout': tf.placeholder_with_default(0., shape=(), name='dropout')
+    'dropout': tf.placeholder_with_default(0., shape=(), name='dropout'),
+    'is_training': tf.placeholder(tf.bool, shape=(), name='is_training')
 }
 
-degrees   = np.array([10, 25], dtype=np.int32)
-model     = GraphSAGE(placeholders, features)
+degrees   = np.array([1, 200], dtype=np.int32)
+model     = GraphSAGE(placeholders, features, train_adj, full_adj)
 pred      = model.predict()
 train_sch = PyScheduler(train_adj, labels, L, degrees, placeholders, train_d)
 eval_sch  = PyScheduler(full_adj, labels, L, degrees, placeholders)
@@ -73,6 +70,7 @@ def calc_f1(y_true, y_pred):
 # Define model evaluation function
 def evaluate(data):
     feed_dict_val = eval_sch.batch(data)
+    feed_dict_val[placeholders['is_training']] = False
     t_test = time()
     los, acc, prd = sess.run([model.loss, model.accuracy, pred], 
                              feed_dict=feed_dict_val)
@@ -104,6 +102,7 @@ for epoch in range(FLAGS.epochs):
         if feed_dict==None:
             break
         feed_dict.update({placeholders['dropout']: FLAGS.dropout})
+        feed_dict[placeholders['is_training']] = True
 
         # Training step
         outs = sess.run([model.opt_op, model.loss, model.accuracy], feed_dict=feed_dict)

@@ -1,6 +1,7 @@
 from gcn.layers import *
 from gcn.metrics import *
 from gcn.inits import *
+from time import time
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
@@ -409,11 +410,33 @@ class MACGCN(Model):
 
 # -----------------------------------------------
 class GraphSAGE(Model):
-    def __init__(self, placeholders, features, **kwargs):
+    def __init__(self, placeholders, features, train_adj=None, test_adj=None, **kwargs):
         super(GraphSAGE, self).__init__(**kwargs)
 
-        self.inputs = tf.Variable(features, trainable=False)
-        self.input_dim = features.shape[1]
+        if train_adj is not None:
+            # Preprocess first aggregation
+            print('Preprocessing first aggregation')
+            start_t = time()
+
+            train_features = train_adj.dot(features)
+            test_features  = test_adj.dot(features)
+
+            self.train_inputs = tf.Variable(train_features, trainable=False)
+            self.test_inputs  = tf.Variable(test_features,  trainable=False)
+            self.self_inputs  = tf.Variable(features,       trainable=False)
+            self.nbr_inputs   = tf.cond(placeholders['is_training'], 
+                                        lambda: self.train_inputs, 
+                                        lambda: self.test_inputs)
+            self.inputs       = tf.concat((self.self_inputs, self.nbr_inputs), -1)
+            self.input_dim    = features.shape[1]
+            self.preprocess   = True
+
+            print('Finished in {} seconds.'.format(time() - start_t))
+        else:
+            self.inputs     = tf.Variable(features, trainable=False)
+            self.input_dim  = features.shape[1]
+            self.preprocess = False
+
         self.num_data = features.shape[0]
         self.output_dim = placeholders['labels'].get_shape().as_list()[1]
         self.placeholders = placeholders
@@ -441,9 +464,13 @@ class GraphSAGE(Model):
         fields = self.placeholders['fields']
         adjs   = self.placeholders['adj']
 
-        self.layers.append(GatherAggregator(fields[0], name='gather'))
-        self.layers.append(PlainAggregator(adjs[0], fields[0], fields[1],
-                                           name='agg1'))
+        if not self.preprocess:
+            self.layers.append(GatherAggregator(fields[0], name='gather'))
+            self.layers.append(PlainAggregator(adjs[0], fields[0], fields[1],
+                                               name='agg1'))
+        else:
+            self.layers.append(GatherAggregator(fields[1], name='gather'))
+
         self.layers.append(Dense(input_dim=self.input_dim*2,
                                  output_dim=FLAGS.hidden1,
                                  placeholders=self.placeholders,
