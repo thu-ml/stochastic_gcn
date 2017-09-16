@@ -45,7 +45,7 @@ class Model(object):
         self.activations.append(self.inputs)
         for layer in self.layers:
             hidden = layer(self.activations[-1])
-            print('Hidden shape = ', hidden.get_shape())
+            print('{} shape = {}'.format(layer.name, hidden.get_shape()))
             self.activations.append(hidden)
         self.outputs = self.activations[-1]
 
@@ -406,3 +406,61 @@ class MACGCN(Model):
     def predict(self):
         raise NotImplementedError
         # return tf.nn.softmax(self.outputs)
+
+# -----------------------------------------------
+class GraphSAGE(Model):
+    def __init__(self, placeholders, features, **kwargs):
+        super(GraphSAGE, self).__init__(**kwargs)
+
+        self.inputs = tf.Variable(features, trainable=False)
+        self.input_dim = features.shape[1]
+        self.num_data = features.shape[0]
+        self.output_dim = placeholders['labels'].get_shape().as_list()[1]
+        self.placeholders = placeholders
+
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate)
+
+        self.build()
+
+    def _loss(self):
+        # Weight decay loss
+        for var in self.layers[0].vars.values():
+            self.loss += FLAGS.weight_decay * tf.nn.l2_loss(var)
+
+        # Cross entropy error
+        self.loss += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
+            logits=self.outputs, labels=self.placeholders['labels']))
+
+    def _accuracy(self):
+        correct_prediction = tf.equal(tf.argmax(self.outputs, 1), 
+                                      tf.argmax(self.placeholders['labels'], 1))
+        self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+
+    def _build(self):
+        # Aggregate
+        fields = self.placeholders['fields']
+        adjs   = self.placeholders['adj']
+
+        self.layers.append(GatherAggregator(fields[0], name='gather'))
+        self.layers.append(PlainAggregator(adjs[0], fields[0], fields[1],
+                                           name='agg1'))
+        self.layers.append(Dense(input_dim=self.input_dim*2,
+                                 output_dim=FLAGS.hidden1,
+                                 placeholders=self.placeholders,
+                                 act=tf.nn.relu,
+                                 dropout=True,
+                                 logging=self.logging,
+                                 name='dense1'))
+
+        self.layers.append(PlainAggregator(adjs[1], fields[1], fields[2], 
+                                           name='agg2'))
+        self.layers.append(Dense(input_dim=FLAGS.hidden1*2,
+                                 output_dim=self.output_dim,
+                                 placeholders=self.placeholders,
+                                 act=lambda x: x,
+                                 dropout=True,
+                                 logging=self.logging,
+                                 name='dense2'))
+
+    def predict(self):
+        return tf.nn.softmax(self.outputs)

@@ -1,82 +1,71 @@
 #include "scheduler.h"
+#include <iostream>
 #include <random>
 #include <algorithm>
 
 std::mt19937 generator;
 uniform_real_distribution<float> u01;
 
-struct Edge {
-    int t;
-    float w;
-};
 
-void schedule_c(int L, int V, int E, int N, int batch_size, float dropconnect,
-        int *d, int *e_s, int *e_t, float *e_w, 
-        vector<int>& b_rows, vector<int>& b_cols, 
-        vector<float>& b_data, vector<int>& b_offsets,
-        vector<int>& r_fields, vector<int>& r_offsets)
+Scheduler::Scheduler(float *adj_w, int *adj_i, int *adj_p, int num_data, int num_edges,
+          int L) :
+    adj_w(adj_w, adj_w+num_edges),
+    adj_i(adj_i, adj_i+num_edges),
+    adj_p(adj_p, adj_p+num_data),
+    L(L), num_data(num_data), 
+    visited(num_data, -1)
 {
-    // Construct adjacency matrix
-    vector<vector<Edge>> adj(V);
-    for (int i = 0; i < E; i++)
-        adj[e_s[i]].push_back(Edge{e_t[i], e_w[i]});
+    this->adj_p.push_back(num_edges);
+}
 
-    // Construct mini batches
-    vector<int> shuf_d(d, d+N);
-    shuffle(shuf_d.begin(), shuf_d.end(), generator);
+void Scheduler::start_batch(int num_data, int *data) {
+    field.clear();
+    field.insert(field.begin(), data, data+num_data);
+}
 
-    vector<int> new_rf;
-    vector<int> visited(V, -1);
-    b_offsets.push_back(0);
-    r_offsets.push_back(0);
-    for (int b_s = 0; b_s < N; b_s += batch_size) {
-        int b_t = min(N, b_s+batch_size);
+void Scheduler::expand(int degree) {
+    //cout << "Expanding" << endl;
+    //for (auto e: adj_p) cout << e << ' '; cout << endl;
+    //for (auto e: adj_w) cout << e << ' '; cout << endl;
+    //for (auto e: adj_i) cout << e << ' '; cout << endl;
 
-        // rf for the last layer
-        vector<int> current_rf(shuf_d.begin()+b_s, shuf_d.begin()+b_t);
-        auto insert_r = [&]() {
-            r_fields.insert(r_fields.end(), current_rf.begin(), current_rf.end());
-            r_offsets.push_back(r_fields.size());
-        };
-        insert_r();
-        for (int l=0; l < L; l++) {
-            new_rf.clear();
+    // Add self edges
+    new_field.clear();
+    new_field.insert(new_field.begin(), field.begin(), field.end());
+    for (int i=0; i<new_field.size(); i++)
+        visited[new_field[i]] = i;
+    edg_s.clear();
+    edg_t.clear();
+    edg_w.clear();
 
-            for (int i=0; i<current_rf.size(); i++) {
-                int s = current_rf[i];
-                if (dropconnect <= 1.0) {
-                    float scale = 1.0 / (1 - dropconnect);
-                    for (auto e: adj[s]) if (u01(generator)>dropconnect) {
-                        if (visited[e.t] == -1) {
-                            visited[e.t] = new_rf.size();
-                            new_rf.push_back(e.t);
-                        }
-                        b_rows.push_back(i);
-                        b_cols.push_back(visited[e.t]);
-                        b_data.push_back(e.w * scale);
-                    }
-                } else {
-                    int n_neighbour = min((int)dropconnect, (int)adj[s].size());
-                    float scale = (float)adj[s].size() / n_neighbour;
-                    // Randomly choose n_neighbour without replacement
-                    shuffle(adj[s].begin(), adj[s].end(), generator);
-                    for (int j=0; j<n_neighbour; j++) {
-                        const auto &e = adj[s][j];
-                        if (visited[e.t] == -1) {
-                            visited[e.t] = new_rf.size();
-                            new_rf.push_back(e.t);
-                        }
-                        b_rows.push_back(i);
-                        b_cols.push_back(visited[e.t]);
-                        b_data.push_back(e.w * scale);
-                    }
-                }
+    // Add neighbour edges
+    for (int i = 0; i < field.size(); i++) {
+        int    s     = field[i];
+        int   *row_i = adj_i.data() + adj_p[s];
+        float *row_w = adj_w.data() + adj_p[s];
+        int   adj_range = adj_p[s+1] - adj_p[s];
+        int   adj_size  = min(adj_range, degree);
+        float scale = (float)adj_range / adj_size;
+
+        for (int it = 0; it < adj_size; it++) {
+            int num_remaining = adj_range - it;
+            int idx = min((int)(it + num_remaining * u01(generator)), 
+                          adj_range-1);
+            swap(row_i[it], row_i[idx]);
+            swap(row_w[it], row_w[idx]);
+            int   t = row_i[it];
+            float w = row_w[it] * scale;
+            if (visited[t] == -1) {
+                visited[t] = new_field.size();
+                new_field.push_back(t);
             }
-            for (auto t: new_rf)
-                visited[t] = -1;
-            b_offsets.push_back(b_rows.size());
-            current_rf = new_rf;
-            insert_r();
+            edg_s.push_back(i);
+            edg_t.push_back(visited[t]);
+            edg_w.push_back(w);
         }
     }
+
+    field.swap(new_field);
+    for (int s: field)
+        visited[s] = -1;
 }

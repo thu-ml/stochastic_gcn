@@ -8,6 +8,7 @@ import sys
 import tensorflow as tf
 import json
 from time import time
+import os
 
 
 def parse_index_file(filename):
@@ -113,73 +114,125 @@ def load_nell_data(dataset_str):
 
 
 def load_graphsage_data(prefix, normalize=True):
-    print('Loading data...')
-    start_time = time()
-
-    G_data = json.load(open(prefix + "-G.json"))
-    G = json_graph.node_link_graph(G_data)
-    if isinstance(G.nodes()[0], int):
-        conversion = lambda n : int(n)
+    # Save normalized version
+    npz_file = prefix + '.npz'
+    if os.path.exists(npz_file):
+        start_time = time()
+        print('Found preprocessed dataset {}, loading...'.format(npz_file))
+        data = np.load(prefix + '.npz')
+        num_data     = data['num_data']
+        full_v       = data['full_v']
+        full_coords  = data['full_coords']
+        train_v      = data['train_v']
+        train_coords = data['train_coords']
+        feats        = data['feats']
+        labels       = data['labels']
+        train_data   = data['train_data']
+        val_data     = data['val_data']
+        test_data    = data['test_data']
+        print('Finished in {} seconds.'.format(time() - start_time))
     else:
-        conversion = lambda n : n
-
-    feats = np.load(prefix + "-feats.npy")
-    id_map = json.load(open(prefix + "-id_map.json"))
-    id_map = {conversion(k):int(v) for k,v in id_map.iteritems()}
-    walks = []
-    class_map = json.load(open(prefix + "-class_map.json"))
-    if isinstance(class_map.values()[0], list):
-        lab_conversion = lambda n : n
-    else:
-        lab_conversion = lambda n : int(n)
-
-    class_map = {conversion(k): lab_conversion(v) for k,v in class_map.iteritems()}
-
-    # Construct adjacency matrix
-    print("Loaded data ({} seconds).. now preprocessing..".format(time()-start_time))
-    start_time = time()
-
-    edges      = [(id_map[edge[0]], id_map[edge[1]]) for edge in G.edges_iter()]
-    num_data   = len(id_map)
-    val_data   = np.array([id_map[n] for n in G.nodes_iter() if G.node[n]['val']], dtype=np.int32)
-    test_data  = np.array([id_map[n] for n in G.nodes_iter() if G.node[n]['test']], dtype=np.int32)
-    is_train   = np.ones((num_data), dtype=np.bool)
-    is_train[val_data] = False
-    is_train[test_data] = False
-    train_data = np.array([n for n in range(num_data) if is_train[n]], dtype=np.int32)
+        print('Loading data...')
+        start_time = time()
     
-    train_edges = [(e[0], e[1]) for e in edges if is_train[e[0]] and is_train[e[1]]]
-    edges       = np.array(edges, dtype=np.int32)
-    train_edges = np.array(train_edges, dtype=np.int32)
+        G_data = json.load(open(prefix + "-G.json"))
+        G = json_graph.node_link_graph(G_data)
+        if isinstance(G.nodes()[0], int):
+            conversion = lambda n : int(n)
+        else:
+            conversion = lambda n : n
+    
+        feats = np.load(prefix + "-feats.npy").astype(np.float32)
+        id_map = json.load(open(prefix + "-id_map.json"))
+        id_map = {conversion(k):int(v) for k,v in id_map.iteritems()}
+        walks = []
+        class_map = json.load(open(prefix + "-class_map.json"))
+        if isinstance(class_map.values()[0], list):
+            lab_conversion = lambda n : n
+        else:
+            lab_conversion = lambda n : int(n)
+    
+        class_map = {conversion(k): lab_conversion(v) for k,v in class_map.iteritems()}
+    
+        # Construct adjacency matrix
+        print("Loaded data ({} seconds).. now preprocessing..".format(time()-start_time))
+        start_time = time()
+    
+        edges      = [(id_map[edge[0]], id_map[edge[1]]) for edge in G.edges_iter()]
+        num_data   = len(id_map)
+        val_data   = np.array([id_map[n] for n in G.nodes_iter() 
+                                 if G.node[n]['val']], dtype=np.int32)
+        test_data  = np.array([id_map[n] for n in G.nodes_iter() 
+                                 if G.node[n]['test']], dtype=np.int32)
+        is_train   = np.ones((num_data), dtype=np.bool)
+        is_train[val_data] = False
+        is_train[test_data] = False
+        train_data = np.array([n for n in range(num_data) if is_train[n]], dtype=np.int32)
+        
+        train_edges = [(e[0], e[1]) for e in edges if is_train[e[0]] and is_train[e[1]]]
+        edges       = np.array(edges, dtype=np.int32)
+        train_edges = np.array(train_edges, dtype=np.int32)
+    
+        # Process labels
+        if isinstance(class_map.values()[0], list):
+            num_classes = len(class_map.values()[0])
+            labels = np.zeros((num_data, num_classes), dtype=np.float32)
+            for k in class_map.keys():
+                labels[id_map[k], :] = np.array(class_map[k])
+        else:
+            num_classes = len(set(class_map.values()))
+            labels = np.zeros((num_data, num_classes), dtype=np.float32)
+            for k in class_map.keys():
+                labels[id_map[k], class_map[k]] = 1
+    
+        if normalize:
+            from sklearn.preprocessing import StandardScaler
+            train_ids = np.array([id_map[n] for n in G.nodes() 
+                          if not G.node[n]['val'] and not G.node[n]['test']])
+            train_feats = feats[train_ids]
+            scaler = StandardScaler()
+            scaler.fit(train_feats)
+            feats = scaler.transform(feats)
 
-    # Process labels
-    if isinstance(class_map.values()[0], list):
-        num_classes = len(class_map.values()[0])
-        labels = np.zeros((num_data, num_classes), dtype=np.float32)
-        for k in class_map.keys():
-            labels[id_map[k], :] = np.array(class_map[k])
-    else:
-        num_classes = len(set(class_map.values()))
-        labels = np.zeros((num_data, num_classes), dtype=np.float32)
-        for k in class_map.keys():
-            labels[id_map[k], class_map[k]] = 1
+        def _normalize_adj(edges):
+            adj = sp.csr_matrix((np.ones((edges.shape[0]), dtype=np.float32),
+                (edges[:,0], edges[:,1])), shape=(num_data, num_data))
+            adj += adj.transpose()
 
-    if normalize:
-        from sklearn.preprocessing import StandardScaler
-        train_ids = np.array([id_map[n] for n in G.nodes() if not G.node[n]['val'] and not G.node[n]['test']])
-        train_feats = feats[train_ids]
-        scaler = StandardScaler()
-        scaler.fit(train_feats)
-        feats = scaler.transform(feats)
+            rowsum = np.array(adj.sum(1)).flatten()
+            d_inv  = 1.0 / (rowsum+1e-20)
+            d_mat_inv = sp.diags(d_inv, 0)
+            adj = d_mat_inv.dot(adj).tocoo()
+            coords = np.array((adj.row, adj.col)).astype(np.int32)
+            return adj.data, coords
 
-    print("Done. {} seconds.".format(time()-start_time))
+        train_v, train_coords = _normalize_adj(train_edges)
+        full_v,  full_coords  = _normalize_adj(edges)
+    
+        print("Done. {} seconds.".format(time()-start_time))
+        with open(npz_file, 'wb') as fwrite:
+            np.savez(fwrite, num_data=num_data, 
+                             full_v=full_v,   full_coords=full_coords,
+                             train_v=train_v, train_coords=train_coords,
+                             feats=feats, labels=labels,
+                             train_data=train_data, val_data=val_data, 
+                             test_data=test_data)
 
-    return num_data, edges, train_edges, feats, labels, train_data, val_data, test_data
+    def _get_adj(data, coords):
+        adj = sp.csr_matrix((data, (coords[0,:], coords[1,:])), 
+                            shape=(num_data, num_data))
+        return adj
+
+    train_adj = _get_adj(train_v, train_coords)
+    full_adj  = _get_adj(full_v,  full_coords)
+
+    return num_data, train_adj, full_adj, feats, labels, train_data, val_data, test_data
 
 
 def sparse_to_tuple(sparse_mx):
     """Convert sparse matrix to tuple representation."""
     def to_tuple(mx):
+        # print(mx.sum(1))
         if not sp.isspmatrix_coo(mx):
             mx = mx.tocoo()
         coords = np.vstack((mx.row, mx.col)).transpose()
@@ -339,3 +392,17 @@ def least_squares_A(H, Z, W, gamma, beta):
 def hinge_loss(Y, Z):
     # return tf.maximum(0.0, 1.0 - (2*Y-1)*Z)
     return tf.losses.hinge_loss(labels=Y, logits=Z, reduction=tf.losses.Reduction.NONE)
+
+
+class Averager:
+    def __init__(self, window_size):
+        self.window_size = window_size
+        self.window      = []
+
+    def add(self, n):
+        self.window.append(n)
+        if len(self.window) > self.window_size:
+            self.window = self.window[1:]
+
+    def mean(self):
+        return np.mean(self.window)

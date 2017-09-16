@@ -1,15 +1,18 @@
-from scipy.sparse import coo_matrix
+from scipy.sparse import coo_matrix, csr_matrix
 from libcpp.vector cimport vector
 from libc.string cimport memcpy
 cimport numpy as np
 import numpy as np
+from utils import sparse_to_tuple
 
 cdef extern from "scheduler.h":
-    void schedule_c(int L, int V, int E, int N, int batch_size, float dropconnect,
-            int *d, int *e_s, int *e_t, float *e_w, 
-            vector[int]& b_rows, vector[int]& b_cols, 
-            vector[float]& b_data, vector[int]& b_offsets,
-            vector[int]& r_fields, vector[int]& r_offsets)
+    cdef cppclass Scheduler:
+        Scheduler() except +
+        Scheduler(float*, int*, int*, int, int, int) except +
+        void start_batch(int, int*)
+        void expand(int)
+        vector[float] adj_w, edg_w
+        vector[int] field, new_field, adj_i, adj_p, edg_s, edg_t, visited
 
 cdef copy_int(int[:] buffer, int* ptr, int size):
     memcpy(&buffer[0], ptr, size*sizeof(int))
@@ -23,60 +26,75 @@ class Batch:
         self.fields = fields
         self.adjs = adjs
 
-def schedule(A, d, L, batch_size, dropconnect):
-    # A: weighted adjacency matrix
-    # d: array of data indices
-    # L: number of levels
-    # output: L+1 receptive fields and L adjacency matrices
-    A_row = A.row
-    A_col = A.col
-    A_data = A.data
-    cdef int[:]   A_row_v  = A_row
-    cdef int[:]   A_col_v  = A_col
-    cdef float[:] A_data_v = A_data
-    cdef int      V        = A.shape[0]
-    cdef int      nnz      = A.nnz
-    cdef int[:]   npd      = d
+cdef class PyScheduler:
+    cdef Scheduler c_sch
+    cdef object labels, data, degrees, placeholders
+    cdef int L
+    cdef int start
 
-    cdef vector[int]   b_rows
-    cdef vector[int]   b_cols
-    cdef vector[float] b_data
-    cdef vector[int]   b_offsets
-    cdef vector[int]   r_fields
-    cdef vector[int]   r_offsets
+    def __init__(self, adj, labels, L, degrees, placeholders, data=None):
+        cdef float[:] ad = adj.data
+        cdef int[:]   ai = adj.indices
+        cdef int[:]   ap = adj.indptr
+        self.c_sch = Scheduler(&ad[0], &ai[0], &ap[0],
+                               labels.shape[0], adj.data.shape[0], L)
+        self.labels = labels
+        self.data = data
+        self.degrees = degrees
+        self.L = L
+        self.start = 0
+        self.placeholders = placeholders
 
-    schedule_c(L, V, nnz, d.shape[0], batch_size, dropconnect,
-               &npd[0], &A_row_v[0], &A_col_v[0], &A_data_v[0],
-               b_rows, b_cols, b_data, b_offsets, r_fields, r_offsets)
+    def shuffle(self):
+        np.random.shuffle(self.data)
+        self.start = 0
 
-    batches = []
-    cdef size_t n_batches = (b_offsets.size()-1) / L
-    for i in range(n_batches):
-        adjs = []
-        fields = []
-        # Process fields
-        for l in range(L+1):
-            s = r_offsets[i*(L+1)+l]
-            t = r_offsets[i*(L+1)+l+1]
-            f = np.zeros((t-s), dtype=np.int32)
-            copy_int(f, &r_fields[s], t-s)
-            fields.append(f)
-        # Process adjs
-        for l in range(L):
-            s = b_offsets[i*L+l]
-            t = b_offsets[i*L+l+1]
-            r = np.zeros((t-s), dtype=np.int32)
-            c = np.zeros((t-s), dtype=np.int32)
-            d = np.zeros((t-s), dtype=np.float32)
-            copy_int(r, &b_rows[s], t-s)
-            copy_int(c, &b_cols[s], t-s)
-            copy_float(d, &b_data[s], t-s)
-            shape = (len(fields[l]), len(fields[l+1]))
-            adjs.append(coo_matrix((d, (r, c)), shape=shape))
+    def batch(self, data):
+        cdef int    fsz
+        cdef int[:] dv = data
+        fields   = [data]
+        adjs     = []
+        self.c_sch.start_batch(len(data), &dv[0])
+        for l in range(self.L):
+            self.c_sch.expand(self.degrees[self.L-l-1])
 
-        adjs.reverse()
+            # fields
+            fsz = self.c_sch.field.size()
+            field = np.zeros((fsz), dtype=np.int32)
+            copy_int(field, self.c_sch.field.data(), fsz)
+            fields.append(field)
+
+            # adjs 
+            ne    = self.c_sch.edg_s.size()
+            edg_s = np.zeros((ne), dtype=np.int32)
+            edg_t = np.zeros((ne), dtype=np.int32)
+            edg_w = np.zeros((ne), dtype=np.float32)
+            copy_int  (edg_s, self.c_sch.edg_s.data(), ne)
+            copy_int  (edg_t, self.c_sch.edg_t.data(), ne)
+            copy_float(edg_w, self.c_sch.edg_w.data(), ne)
+            shape = (fields[-2].shape[0], fields[-1].shape[0])
+            adj   = csr_matrix((edg_w, (edg_s, edg_t)), shape)
+            adjs.append(adj)
+
         fields.reverse()
-        batches.append(Batch(fields=fields, adjs=adjs))
+        adjs.reverse()
+        return self.get_feed_dict(fields, adjs)
 
-    return batches
-        
+    def minibatch(self, batch_size):
+        if self.start == self.data.shape[0]:
+            return None
+        end = min(self.data.shape[0], self.start+batch_size)
+        batch = self.data[self.start:end]
+        self.start = end
+        return self.batch(batch)
+
+    def get_feed_dict(self, fields, adjs):
+        labels = self.labels[fields[-1]]
+        adjs   = sparse_to_tuple(adjs)
+        feed_dict = {self.placeholders['adj'][i] : adjs[i] for i in range(self.L)}
+        feed_dict[self.placeholders['labels']] = labels
+        for i in range(self.L+1):
+            feed_dict[self.placeholders['fields'][i]] = fields[i]
+        return feed_dict
+
+

@@ -100,7 +100,7 @@ class Dense(Layer):
         self.bias = bias
 
         # helper variable for sparse dropout
-        self.num_features_nonzero = placeholders['num_features_nonzero']
+        self.num_features_nonzero = placeholders.get('num_features_nonzero', None)
 
         with tf.variable_scope(self.name + '_vars'):
             self.vars['weights'] = glorot([input_dim, output_dim],
@@ -222,14 +222,29 @@ class VarianceReductedAggregator(Layer):
         return output
 
 
+class GatherAggregator(Layer):
+    def __init__(self, field, **kwargs):
+        super(GatherAggregator, self).__init__(**kwargs)
+        self.field = field
+
+    def _call(self, inputs):
+        return tf.gather(inputs, self.field)
+
+
 class PlainAggregator(Layer):
     # H -> Z=AH
-    # Z = subsampled_support * inputs
-    def __init__(self, subsampled_support, **kwargs):
+    # Z = concat(adj * inputs, inputs)
+    def __init__(self, adj, ifield, ofield, **kwargs):
         super(PlainAggregator, self).__init__(**kwargs)
 
-        self.subsampled_support = subsampled_support
+        self.adj    = adj
+        self.ifield = ifield
+        self.ofield = ofield
 
 
     def _call(self, inputs):
-        return dot(self.subsampled_support, inputs, sparse=True)
+        # ofield * d
+        a_neighbour = dot(self.adj, inputs, sparse=True)
+        a_self      = inputs[:tf.shape(self.ofield)[0], :]
+        return tf.concat((a_self, a_neighbour), axis=1)
+

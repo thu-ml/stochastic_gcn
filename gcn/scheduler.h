@@ -1,11 +1,21 @@
 #include <vector>
+#include <memory>
 using namespace std;
 
-// 做一个stale SGD，每次随机更新activation，其他用这个activation上一轮的值
-// 分析activation更新传来的导数，应该比起weight更新造成的导数是高阶无穷小？
+class Scheduler {
+public:
+    Scheduler() {}
+    Scheduler(float *adj_w, int *adj_i, int *adj_p, int num_data, int num_edges, 
+              int L);
 
-void schedule_c(int L, int V, int E, int N, int batch_size, float dropconnect,
-        int *d, int *e_s, int *e_t, float *e_w, 
-        vector<int>& b_rows, vector<int>& b_cols, 
-        vector<float>& b_data, vector<int>& b_offsets,
-        vector<int>& r_fields, vector<int>& r_offsets);
+    void start_batch(int num_data, int *data);
+    void expand(int degree);
+
+public:
+    vector<float> adj_w;
+    vector<int>  adj_i, adj_p;
+    int L, num_data; 
+    vector<int>  field, new_field, edg_s, edg_t;
+    vector<float> edg_w;
+    vector<int> visited;
+};
