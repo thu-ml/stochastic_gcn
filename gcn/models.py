@@ -2,6 +2,7 @@ from gcn.layers import *
 from gcn.metrics import *
 from gcn.inits import *
 from time import time
+import scipy.sparse as sp
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
@@ -9,7 +10,7 @@ FLAGS = flags.FLAGS
 
 class Model(object):
     def __init__(self, **kwargs):
-        allowed_kwargs = {'name', 'logging'}
+        allowed_kwargs = {'name', 'logging', 'multitask'}
         for kwarg in kwargs.keys():
             assert kwarg in allowed_kwargs, 'Invalid keyword argument: ' + kwarg
         name = kwargs.get('name')
@@ -33,9 +34,35 @@ class Model(object):
         self.accuracy = 0
         self.optimizer = None
         self.opt_op = None
+        self.multitask = kwargs.get('multitask', False)
 
     def _build(self):
         raise NotImplementedError
+
+    def _loss(self):
+        # Weight decay loss
+        for var in self.layers[0].vars.values():
+            self.loss += FLAGS.weight_decay * tf.nn.l2_loss(var)
+
+        if self.multitask:
+            self.loss += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
+                logits=self.outputs, labels=self.placeholders['labels']))
+        else:
+            # Cross entropy error
+            self.loss += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
+                logits=self.outputs, labels=self.placeholders['labels']))
+
+    def _accuracy(self):
+        if self.multitask:
+            preds = self.outputs > 0
+            labs  = self.placeholders['labels'] > 0.5
+            correct_prediction = tf.equal(preds, labs)
+            self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+        else:
+            correct_prediction = tf.equal(tf.argmax(self.outputs, 1), 
+                                          tf.argmax(self.placeholders['labels'], 1))
+            self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+
 
     def build(self):
         """ Wrapper for _build() """
@@ -65,13 +92,10 @@ class Model(object):
                     self.opt_op.append(tf.scatter_update(ref, indices, updates))
 
     def predict(self):
-        pass
-
-    def _loss(self):
-        raise NotImplementedError
-
-    def _accuracy(self):
-        raise NotImplementedError
+        if self.multitask:
+            return tf.nn.sigmoid(self.outputs)
+        else:
+            return tf.nn.softmax(self.outputs)
 
     def save(self, sess=None):
         if not sess:
@@ -448,20 +472,6 @@ class GraphSAGE(Model):
         self.train_features = train_features
         self.test_features  = test_features
 
-    def _loss(self):
-        # Weight decay loss
-        for var in self.layers[0].vars.values():
-            self.loss += FLAGS.weight_decay * tf.nn.l2_loss(var)
-
-        # Cross entropy error
-        self.loss += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
-            logits=self.outputs, labels=self.placeholders['labels']))
-
-    def _accuracy(self):
-        correct_prediction = tf.equal(tf.argmax(self.outputs, 1), 
-                                      tf.argmax(self.placeholders['labels'], 1))
-        self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-
     def _build(self):
         # Aggregate
         fields = self.placeholders['fields']
@@ -484,20 +494,29 @@ class GraphSAGE(Model):
                                      act=tf.nn.relu,
                                      logging=self.logging,
                                      name='dense%d'%l))
+            # self.layers.append(Dense(input_dim=FLAGS.hidden1,
+            #                          output_dim=FLAGS.hidden1,
+            #                          placeholders=self.placeholders,
+            #                          act=tf.nn.relu,
+            #                          logging=self.logging,
+            #                          name='dense2%d'%l))
             self.layers.append(PlainAggregator(adjs[l], fields[l], fields[l+1], 
                                                name='agg%d'%(l+1)))
 
         self.layers.append(Dropout(1-self.placeholders['dropout'],
                                    self.placeholders['is_training']))
+        # self.layers.append(Dense(input_dim=FLAGS.hidden1*2,
+        #                          output_dim=FLAGS.hidden1,
+        #                          placeholders=self.placeholders,
+        #                          act=tf.nn.relu,
+        #                          logging=self.logging,
+        #                          name='dense2%d'%l))
         self.layers.append(Dense(input_dim=FLAGS.hidden1*2,
                                  output_dim=self.output_dim,
                                  placeholders=self.placeholders,
                                  act=lambda x: x,
                                  logging=self.logging,
                                  name='dense2'))
-
-    def predict(self):
-        return tf.nn.softmax(self.outputs)
 
 # -----------------------------------------------
 class NeighbourMLP(Model):
@@ -538,20 +557,6 @@ class NeighbourMLP(Model):
         self.train_features = train_features
         self.test_features  = test_features
 
-    def _loss(self):
-        # Weight decay loss
-        for var in self.layers[0].vars.values():
-            self.loss += FLAGS.weight_decay * tf.nn.l2_loss(var)
-
-        # Cross entropy error
-        self.loss += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
-            logits=self.outputs, labels=self.placeholders['labels']))
-
-    def _accuracy(self):
-        correct_prediction = tf.equal(tf.argmax(self.outputs, 1), 
-                                      tf.argmax(self.placeholders['labels'], 1))
-        self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-
     def _build(self):
         # Aggregate
         field = self.placeholders['fields'][-1]
@@ -577,5 +582,48 @@ class NeighbourMLP(Model):
                                  logging=self.logging,
                                  name='dense%d'%(self.L-1)))
 
-    def predict(self):
-        return tf.nn.softmax(self.outputs)
+
+class AttentiveGCN(Model):
+    def __init__(self, L, placeholders, features, **kwargs):
+        super(AttentiveGCN, self).__init__(**kwargs)
+
+        self.L = L
+        self.inputs     = tf.Variable(features, trainable=False)
+        self.input_dim  = features.shape[1]
+
+        self.num_data = features.shape[0]
+        self.output_dim = placeholders['labels'].get_shape().as_list()[1]
+        self.placeholders = placeholders
+
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate, beta1=FLAGS.beta1, beta2=FLAGS.beta2)
+
+        self.build()
+
+    def _build(self):
+        # Aggregate
+        fields = self.placeholders['fields']
+        adjs   = self.placeholders['adj']
+
+        self.layers.append(GatherAggregator(fields[0], name='gather'))
+
+        for l in range(self.L):
+            input_dim = self.input_dim if l==0 else FLAGS.hidden1*2
+            self.layers.append(Dropout(1-self.placeholders['dropout'],
+                                       self.placeholders['is_training']))
+            self.layers.append(Dense(input_dim=input_dim,
+                                     output_dim=FLAGS.hidden1+FLAGS.adims*2,
+                                     placeholders=self.placeholders,
+                                     act=tf.nn.relu,
+                                     logging=self.logging,
+                                     name='dense_%d'%l))
+            self.layers.append(AttentionAggregator(adjs[l], FLAGS.adims, FLAGS.hidden1, name='agg_%d'%l))
+
+        self.layers.append(Dropout(1-self.placeholders['dropout'],
+                                   self.placeholders['is_training']))
+        self.layers.append(Dense(input_dim=FLAGS.hidden1*2,
+                                 output_dim=self.output_dim,
+                                 placeholders=self.placeholders,
+                                 act=lambda x: x,
+                                 logging=self.logging,
+                                 name='dense_output'))
+

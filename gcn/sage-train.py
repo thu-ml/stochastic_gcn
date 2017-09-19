@@ -6,9 +6,10 @@ import sys
 import tensorflow as tf
 
 from gcn.utils import *
-from gcn.models import GraphSAGE, NeighbourMLP
+from gcn.models import GraphSAGE, NeighbourMLP, AttentiveGCN
 from scheduler import PyScheduler
 from sklearn.metrics import f1_score
+from sklearn.linear_model import LogisticRegression
 from tensorflow.contrib.opt import ScipyOptimizerInterface
 
 # Set random seed
@@ -24,6 +25,7 @@ flags.DEFINE_string('model', 'graphsage', 'Model string.')  # 'graphsage', 'mlp'
 flags.DEFINE_float('learning_rate', 0.001, 'Initial learning rate.')
 flags.DEFINE_integer('epochs', 200, 'Number of epochs to train.')
 flags.DEFINE_integer('hidden1', 128, 'Number of units in hidden layer 1.')
+flags.DEFINE_integer('adims', 16, 'Dimension of attention')
 flags.DEFINE_float('dropout', 0.5, 'Dropout rate (1 - keep probability).')
 flags.DEFINE_float('weight_decay', 0.0, 'Weight for L2 loss on embedding matrix.')
 flags.DEFINE_integer('early_stopping', 100, 'Tolerance for early stopping (# of epochs).')
@@ -35,11 +37,23 @@ flags.DEFINE_float('beta1', 0.9, 'Beta1 for Adam')
 flags.DEFINE_float('beta2', 0.999, 'Beta2 for Adam')
 
 # Load data
-num_data, train_adj, full_adj, features, labels, train_d, val_d, test_d = \
-        load_graphsage_data('reddit/reddit')
+gcn_datasets = set(['cora', 'citeseer', 'pubmed'])
+if FLAGS.dataset in gcn_datasets:
+    num_data, train_adj, full_adj, features, labels, train_d, val_d, test_d = \
+            load_data(FLAGS.dataset)
+else:
+    num_data, train_adj, full_adj, features, labels, train_d, val_d, test_d = \
+            load_graphsage_data('data/{}'.format(FLAGS.dataset))
 print('Features shape = {}'.format(features.shape))
 
 L = FLAGS.num_layers
+# print(type(features))
+
+#clf = LogisticRegression()
+#for i in range(labels.shape[1]):
+#    model = clf.fit(features[train_d,:], labels[train_d, i])
+#    score = model.score(features[test_d,:], labels[test_d,i])
+#    print(score)
 
 # Define placeholders
 placeholders = {
@@ -55,17 +69,20 @@ placeholders = {
                     name='features')
 }
 
+multitask = True if FLAGS.dataset=='ppi' else False
 if L==2:
-    train_degrees   = np.array([1, 20], dtype=np.int32)
-    test_degrees    = np.array([1, 1000], dtype=np.int32)
+    train_degrees   = np.array([1, 10000], dtype=np.int32)
+    test_degrees    = np.array([1, 10000], dtype=np.int32)
 else:
     train_degrees   = np.array([1, 1, 1], dtype=np.int32)
     test_degrees    = np.array([1, 1, 1], dtype=np.int32)
 
 if FLAGS.model == 'graphsage':
-    model     = GraphSAGE(L, placeholders, features, train_adj, full_adj)
+    model     = GraphSAGE(L, placeholders, features, train_adj, full_adj, multitask=multitask)
+elif FLAGS.model == 'mlp':
+    model     = NeighbourMLP(L, placeholders, features, train_adj, full_adj, multitask=multitask)
 else:
-    model     = NeighbourMLP(L, placeholders, features, train_adj, full_adj)
+    model     = AttentiveGCN(L, placeholders, features, multitask=multitask)
 pred      = model.predict()
 train_sch = PyScheduler(train_adj, labels, L, train_degrees, placeholders, train_d)
 eval_sch  = PyScheduler(full_adj,  labels, L, test_degrees,  placeholders)
@@ -75,9 +92,13 @@ eval_sch  = PyScheduler(full_adj,  labels, L, test_degrees,  placeholders)
 sess = tf.Session()
 
 
-def calc_f1(y_true, y_pred):
-    y_true = np.argmax(y_true, axis=1)
-    y_pred = np.argmax(y_pred, axis=1)
+def calc_f1(y_pred, y_true):
+    if multitask:
+        y_pred[y_pred>0.5] = 1
+        y_pred[y_pred<=0.5] = 0
+    else:
+        y_true = np.argmax(y_true, axis=1)
+        y_pred = np.argmax(y_pred, axis=1)
     return f1_score(y_true, y_pred, average="micro"), \
            f1_score(y_true, y_pred, average="macro")
 
@@ -97,15 +118,16 @@ def evaluate(data):
 print('Loading data to GPU...')
 t = time()
 sess.run(tf.global_variables_initializer())
-sess.run(tf.assign(model.train_inputs, placeholders['features']),
-         feed_dict={placeholders['features']: model.train_features})
-sess.run(tf.assign(model.test_inputs,  placeholders['features']),
-         feed_dict={placeholders['features']: model.test_features})
+if FLAGS.model != 'agcn':
+    sess.run(tf.assign(model.train_inputs, placeholders['features']),
+             feed_dict={placeholders['features']: model.train_features})
+    sess.run(tf.assign(model.test_inputs,  placeholders['features']),
+             feed_dict={placeholders['features']: model.test_features})
 print('Finished in {} seconds'.format(time()-t))
 
 cost_val = []
-avg_loss = Averager(100)
-avg_acc  = Averager(100)
+avg_loss = Averager(1)
+avg_acc  = Averager(1)
 
 def SGDTrain():
     # Train model

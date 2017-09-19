@@ -253,6 +253,36 @@ class PlainAggregator(Layer):
         a_self      = inputs[:tf.shape(self.ofield)[0], :]
         return tf.concat((a_self, a_neighbour), axis=1)
 
+
+class AttentionAggregator(Layer):
+    def __init__(self, adj, key_dim, value_dim, **kwargs):
+        super(AttentionAggregator, self).__init__(**kwargs)
+        self.adj       = adj
+        self.key_dim   = key_dim
+        self.value_dim = value_dim
+
+        self.Ar        = adj.indices[:,0]
+        self.Ac        = adj.indices[:,1]
+
+    def _call(self, inputs):
+        key_dim = self.key_dim
+        Q  = inputs[:, :key_dim]
+        K  = inputs[:, key_dim:key_dim*2]
+        V  = inputs[:, key_dim*2:]
+
+        Qe = tf.gather(Q, self.Ar)
+        Ke = tf.gather(K, self.Ac)
+        
+        QKv = tf.reduce_sum(Qe * Ke, -1) / \
+              tf.sqrt(tf.constant(self.key_dim, tf.float32))
+        Qkv = tf.SparseTensor(self.adj.indices, QKv, self.adj.dense_shape)
+        Attention = tf.sparse_softmax(Qkv)
+
+        a_neighbour = dot(Attention, V, sparse=True)
+        a_self      = V[:tf.cast(self.adj.dense_shape[0], tf.int32), :]
+        return tf.concat((a_self, a_neighbour), axis=1)
+
+
 class Dropout(Layer):
     def __init__(self, keep_prob, is_training, **kwargs):
         super(Dropout, self).__init__(**kwargs)
