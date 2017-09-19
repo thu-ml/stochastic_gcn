@@ -10,6 +10,9 @@ import json
 from time import time
 import os
 
+flags = tf.app.flags
+FLAGS = flags.FLAGS
+
 
 def parse_index_file(filename):
     """Parse index file."""
@@ -27,7 +30,7 @@ def sample_mask(idx, l):
 
 
 def load_data(dataset_str):
-    npz_file = 'data/{}.npz'.format(dataset_str)
+    npz_file = 'data/{}_{}.npz'.format(dataset_str, FLAGS.normalization)
     if os.path.exists(npz_file):
         start_time = time()
         print('Found preprocessed dataset {}, loading...'.format(npz_file))
@@ -100,9 +103,30 @@ def load_data(dataset_str):
             d_mat_inv = sp.diags(d_inv, 0)
             adj = d_mat_inv.dot(adj).tocoo()
             coords = np.array((adj.row, adj.col)).astype(np.int32)
-            return adj.data, coords
+            return adj.data.astype(np.float32), coords
 
-        full_v, full_coords = _normalize_adj(adj)
+        def gcn_normalize_adj(adj):
+            adj = adj + sp.eye(adj.shape[0])
+            rowsum = np.array(adj.sum(1)) + 1e-20
+            d_inv_sqrt = np.power(rowsum, -0.5).flatten()
+            d_inv_sqrt[np.isinf(d_inv_sqrt)] = 0.
+            d_mat_inv_sqrt = sp.diags(d_inv_sqrt, 0)
+            adj = adj.dot(d_mat_inv_sqrt).transpose().dot(d_mat_inv_sqrt)
+            adj = adj.tocoo()
+            coords = np.array((adj.row, adj.col)).astype(np.int32)
+            return adj.data.astype(np.float32), coords
+
+        # Normalize features
+        rowsum = np.array(features.sum(1)) + 1e-9
+        r_inv = np.power(rowsum, -1).flatten()
+        r_inv[np.isinf(r_inv)] = 0.
+        r_mat_inv = sp.diags(r_inv, 0)
+        features = r_mat_inv.dot(features)
+
+        if FLAGS.normalization == 'gcn':
+            full_v, full_coords = gcn_normalize_adj(adj)
+        else:
+            full_v, full_coords = _normalize_adj(adj)
         full_v = full_v.astype(np.float32)
         full_coords = full_coords.astype(np.int32)
         train_v, train_coords = full_v, full_coords
@@ -129,6 +153,57 @@ def load_data(dataset_str):
     full_adj  = _get_adj(full_v,  full_coords)
 
     return num_data, train_adj, full_adj, feats, labels, train_data, val_data, test_data
+
+
+def old_load_data(dataset_str):
+    """Load data."""
+    names = ['x', 'y', 'tx', 'ty', 'allx', 'ally', 'graph']
+    objects = []
+    for i in range(len(names)):
+        with open("data/ind.{}.{}".format(dataset_str, names[i]), 'rb') as f:
+            if sys.version_info > (3, 0):
+                objects.append(pkl.load(f, encoding='latin1'))
+            else:
+                objects.append(pkl.load(f))
+
+    x, y, tx, ty, allx, ally, graph = tuple(objects)
+    test_idx_reorder = parse_index_file("data/ind.{}.test.index".format(dataset_str))
+    test_idx_range = np.sort(test_idx_reorder)
+
+    if dataset_str == 'citeseer':
+        # Fix citeseer dataset (there are some isolated nodes in the graph)
+        # Find isolated nodes, add them as zero-vecs into the right position
+        test_idx_range_full = range(min(test_idx_reorder), max(test_idx_reorder)+1)
+        tx_extended = sp.lil_matrix((len(test_idx_range_full), x.shape[1]))
+        tx_extended[test_idx_range-min(test_idx_range), :] = tx
+        tx = tx_extended
+        ty_extended = np.zeros((len(test_idx_range_full), y.shape[1]))
+        ty_extended[test_idx_range-min(test_idx_range), :] = ty
+        ty = ty_extended
+
+    features = sp.vstack((allx, tx)).tolil()
+    features[test_idx_reorder, :] = features[test_idx_range, :]
+    adj = nx.adjacency_matrix(nx.from_dict_of_lists(graph))
+
+    labels = np.vstack((ally, ty))
+    labels[test_idx_reorder, :] = labels[test_idx_range, :]
+
+    idx_test = test_idx_range.tolist()
+    idx_train = range(len(y))
+    idx_val = range(len(y), len(y)+500)
+
+    train_mask = sample_mask(idx_train, labels.shape[0])
+    val_mask = sample_mask(idx_val, labels.shape[0])
+    test_mask = sample_mask(idx_test, labels.shape[0])
+
+    y_train = np.zeros(labels.shape)
+    y_val = np.zeros(labels.shape)
+    y_test = np.zeros(labels.shape)
+    y_train[train_mask, :] = labels[train_mask, :]
+    y_val[val_mask, :] = labels[val_mask, :]
+    y_test[test_mask, :] = labels[test_mask, :]
+
+    return adj, features, y_train, y_val, y_test, train_mask, val_mask, test_mask
 
 
 def load_nell_data(dataset_str):

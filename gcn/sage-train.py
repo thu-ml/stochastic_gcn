@@ -6,7 +6,7 @@ import sys
 import tensorflow as tf
 
 from gcn.utils import *
-from gcn.models import GraphSAGE, NeighbourMLP, AttentiveGCN
+from gcn.models import GraphSAGE, NeighbourMLP, AttentiveGCN, GCN2, FastGCN, GCN3
 from scheduler import PyScheduler
 from sklearn.metrics import f1_score
 from sklearn.linear_model import LogisticRegression
@@ -20,21 +20,23 @@ tf.set_random_seed(seed)
 # Settings
 flags = tf.app.flags
 FLAGS = flags.FLAGS
-flags.DEFINE_string('dataset', 'reddit', 'Dataset string.')  # 'cora', 'citeseer', 'pubmed'
+flags.DEFINE_string('dataset', 'cora', 'Dataset string.')  # 'cora', 'citeseer', 'pubmed'
 flags.DEFINE_string('model', 'graphsage', 'Model string.')  # 'graphsage', 'mlp'
-flags.DEFINE_float('learning_rate', 0.001, 'Initial learning rate.')
+flags.DEFINE_float('learning_rate', 0.01, 'Initial learning rate.')
 flags.DEFINE_integer('epochs', 200, 'Number of epochs to train.')
-flags.DEFINE_integer('hidden1', 128, 'Number of units in hidden layer 1.')
+flags.DEFINE_integer('hidden1', 16, 'Number of units in hidden layer 1.')
 flags.DEFINE_integer('adims', 16, 'Dimension of attention')
 flags.DEFINE_float('dropout', 0.5, 'Dropout rate (1 - keep probability).')
-flags.DEFINE_float('weight_decay', 0.0, 'Weight for L2 loss on embedding matrix.')
-flags.DEFINE_integer('early_stopping', 100, 'Tolerance for early stopping (# of epochs).')
-flags.DEFINE_integer('batch_size', 512, 'Minibatch size for SGD')
+flags.DEFINE_float('weight_decay', 5e-4, 'Weight for L2 loss on embedding matrix.')
+flags.DEFINE_integer('early_stopping', 10, 'Tolerance for early stopping (# of epochs).')
+flags.DEFINE_integer('batch_size', 1000, 'Minibatch size for SGD')
 flags.DEFINE_integer('num_layers', 2, 'Number of layers')
 flags.DEFINE_integer('num_hops', 3, 'Number of neighbour hops')
 flags.DEFINE_bool('vr', True, 'Variance reduction for vrgcn')
 flags.DEFINE_float('beta1', 0.9, 'Beta1 for Adam')
 flags.DEFINE_float('beta2', 0.999, 'Beta2 for Adam')
+flags.DEFINE_string('normalization', 'gcn', 'gcn or graphsage')
+flags.DEFINE_bool('layer_norm', False, 'Layer normalization')
 
 # Load data
 gcn_datasets = set(['cora', 'citeseer', 'pubmed'])
@@ -46,8 +48,14 @@ else:
             load_graphsage_data('data/{}'.format(FLAGS.dataset))
 print('Features shape = {}'.format(features.shape))
 
+train_mask = np.zeros((num_data), dtype=np.bool)
+val_mask   = np.zeros((num_data), dtype=np.bool)
+test_mask  = np.zeros((num_data), dtype=np.bool)
+train_mask[train_d] = True
+val_mask[val_d]     = True
+test_mask[test_d]   = True
+
 L = FLAGS.num_layers
-# print(type(features))
 
 #clf = LogisticRegression()
 #for i in range(labels.shape[1]):
@@ -63,6 +71,7 @@ placeholders = {
                for l in range(L+1)],
     'labels': tf.placeholder(tf.float32, shape=(None, labels.shape[1]), 
               name='labels'),
+    'labels_mask': tf.placeholder(tf.bool, shape=(None)),
     'dropout': tf.placeholder_with_default(0., shape=(), name='dropout'),
     'is_training': tf.placeholder(tf.bool, shape=(), name='is_training'),
     'features' : tf.placeholder(tf.float32, shape=(None, None),
@@ -71,14 +80,19 @@ placeholders = {
 
 multitask = True if FLAGS.dataset=='ppi' else False
 if L==2:
-    train_degrees   = np.array([1, 10000], dtype=np.int32)
-    test_degrees    = np.array([1, 10000], dtype=np.int32)
+    train_degrees   = np.array([10000, 10000], dtype=np.int32)
+    test_degrees    = np.array([10000, 10000], dtype=np.int32)
 else:
     train_degrees   = np.array([1, 1, 1], dtype=np.int32)
     test_degrees    = np.array([1, 1, 1], dtype=np.int32)
 
 if FLAGS.model == 'graphsage':
-    model     = GraphSAGE(L, placeholders, features, train_adj, full_adj, multitask=multitask)
+    # model     = GraphSAGE(L, placeholders, features, train_adj, full_adj, multitask=multitask)
+    model     = GraphSAGE(L, placeholders, features, train_adj, full_adj)
+    # model     = GraphSAGE(L, placeholders, features)
+    # model     = GCN2(L, placeholders, features, multitask=multitask)
+    # model      = FastGCN(placeholders, features, features.shape[1])
+    # model = GCN3(placeholders, features.shape[1])
 elif FLAGS.model == 'mlp':
     model     = NeighbourMLP(L, placeholders, features, train_adj, full_adj, multitask=multitask)
 else:
@@ -104,7 +118,7 @@ def calc_f1(y_pred, y_true):
 
 
 # Define model evaluation function
-def evaluate(data):
+def evaluate(data, mask):
     feed_dict_val = eval_sch.batch(data)
     feed_dict_val[placeholders['is_training']] = False
     t_test = time()
@@ -146,7 +160,7 @@ def SGDTrain():
                 break
             feed_dict.update({placeholders['dropout']: FLAGS.dropout})
             feed_dict[placeholders['is_training']] = True
-    
+
             # Training step
             outs = sess.run([model.opt_op, model.loss, model.accuracy], feed_dict=feed_dict)
             avg_loss.add(outs[1])
@@ -156,7 +170,7 @@ def SGDTrain():
                       feed_dict[placeholders['adj'][0]][0].shape, features.shape)
     
         # Validation
-        cost, acc, micro, macro, duration = evaluate(val_d)
+        cost, acc, micro, macro, duration = evaluate(val_d, val_mask)
         cost_val.append(cost)
     
         # Print results
@@ -176,7 +190,7 @@ def SGDTrain():
     print("Optimization Finished!")
     
     # Testing
-    test_cost, test_acc, micro, macro, test_duration = evaluate(test_d)
+    test_cost, test_acc, micro, macro, test_duration = evaluate(test_d, test_mask)
     print("Test set results:", "cost=", "{:.5f}".format(test_cost),
           "accuracy=", "{:.5f}".format(test_acc), 
           "mi F1={:.5f} ma F1={:.5f} ".format(micro, macro),
