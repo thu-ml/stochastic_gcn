@@ -4,6 +4,7 @@ import networkx as nx
 from networkx.readwrite import json_graph
 import scipy.sparse as sp
 from scipy.sparse.linalg.eigen.arpack import eigsh
+from sklearn.metrics import f1_score
 import sys
 import tensorflow as tf
 import json
@@ -534,3 +535,14 @@ class Averager:
 
     def mean(self):
         return np.mean(self.window)
+
+
+def calc_f1(y_pred, y_true, multitask):
+    if multitask:
+        y_pred[y_pred>0.5] = 1
+        y_pred[y_pred<=0.5] = 0
+    else:
+        y_true = np.argmax(y_true, axis=1)
+        y_pred = np.argmax(y_pred, axis=1)
+    return f1_score(y_true, y_pred, average="micro"), \
+           f1_score(y_true, y_pred, average="macro")

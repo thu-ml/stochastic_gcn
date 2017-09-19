@@ -6,10 +6,8 @@ import sys
 import tensorflow as tf
 
 from gcn.utils import *
-from gcn.models import GraphSAGE, NeighbourMLP, AttentiveGCN, GCN2, FastGCN, GCN3
+from gcn.models import GraphSAGE, NeighbourMLP, AttentiveGCN
 from scheduler import PyScheduler
-from sklearn.metrics import f1_score
-from sklearn.linear_model import LogisticRegression
 from tensorflow.contrib.opt import ScipyOptimizerInterface
 
 # Set random seed
@@ -23,12 +21,12 @@ FLAGS = flags.FLAGS
 flags.DEFINE_string('dataset', 'cora', 'Dataset string.')  # 'cora', 'citeseer', 'pubmed'
 flags.DEFINE_string('model', 'graphsage', 'Model string.')  # 'graphsage', 'mlp'
 flags.DEFINE_float('learning_rate', 0.01, 'Initial learning rate.')
-flags.DEFINE_integer('epochs', 200, 'Number of epochs to train.')
+flags.DEFINE_integer('epochs', 400, 'Number of epochs to train.')
 flags.DEFINE_integer('hidden1', 16, 'Number of units in hidden layer 1.')
 flags.DEFINE_integer('adims', 16, 'Dimension of attention')
-flags.DEFINE_float('dropout', 0.5, 'Dropout rate (1 - keep probability).')
+flags.DEFINE_float('dropout', 0.4, 'Dropout rate (1 - keep probability).')
 flags.DEFINE_float('weight_decay', 5e-4, 'Weight for L2 loss on embedding matrix.')
-flags.DEFINE_integer('early_stopping', 10, 'Tolerance for early stopping (# of epochs).')
+flags.DEFINE_integer('early_stopping', 100, 'Tolerance for early stopping (# of epochs).')
 flags.DEFINE_integer('batch_size', 1000, 'Minibatch size for SGD')
 flags.DEFINE_integer('num_layers', 2, 'Number of layers')
 flags.DEFINE_integer('num_hops', 3, 'Number of neighbour hops')
@@ -58,7 +56,6 @@ placeholders = {
                for l in range(L+1)],
     'labels': tf.placeholder(tf.float32, shape=(None, labels.shape[1]), 
               name='labels'),
-    'labels_mask': tf.placeholder(tf.bool, shape=(None)),
     'dropout': tf.placeholder_with_default(0., shape=(), name='dropout'),
     'is_training': tf.placeholder(tf.bool, shape=(), name='is_training'),
     'features' : tf.placeholder(tf.float32, shape=(None, None),
@@ -87,18 +84,6 @@ eval_sch  = PyScheduler(full_adj,  labels, L, test_degrees,  placeholders)
 # Initialize session
 sess = tf.Session()
 
-
-def calc_f1(y_pred, y_true):
-    if multitask:
-        y_pred[y_pred>0.5] = 1
-        y_pred[y_pred<=0.5] = 0
-    else:
-        y_true = np.argmax(y_true, axis=1)
-        y_pred = np.argmax(y_pred, axis=1)
-    return f1_score(y_true, y_pred, average="micro"), \
-           f1_score(y_true, y_pred, average="macro")
-
-
 # Define model evaluation function
 def evaluate(data):
     feed_dict_val = eval_sch.batch(data)
@@ -106,7 +91,7 @@ def evaluate(data):
     t_test = time()
     los, acc, prd = sess.run([model.loss, model.accuracy, pred], 
                              feed_dict=feed_dict_val)
-    micro, macro  = calc_f1(prd, feed_dict_val[placeholders['labels']])
+    micro, macro  = calc_f1(prd, feed_dict_val[placeholders['labels']], multitask)
     return los, acc, micro, macro, (time()-t_test)
 
 
@@ -200,7 +185,7 @@ def LBFGSTrain():
         t_test = time()
         los, acc, prd = sess.run([model.loss, model.accuracy, pred], 
                                  feed_dict=test_feed_dict)
-        micro, macro  = calc_f1(prd, test_feed_dict[placeholders['labels']])
+        micro, macro  = calc_f1(prd, test_feed_dict[placeholders['labels']], multitask)
         print('Val loss = {:.4f}, acc = {:.4f}, micro = {:.4f}, macro = {:.4f}'
                 .format(los, acc, micro, macro))
 
