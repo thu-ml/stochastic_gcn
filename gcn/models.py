@@ -229,25 +229,29 @@ class NeighbourMLP(Model):
         train_features = _create_features(features, train_adj)
         test_features  = _create_features(features, test_adj)
 
-        self.train_inputs = tf.Variable(tf.zeros(train_features.shape), trainable=False)
-        self.test_inputs  = tf.Variable(tf.zeros(test_features.shape),  trainable=False)
-        self.inputs       = tf.cond(placeholders['is_training'], 
-                                        lambda: self.train_inputs, 
-                                        lambda: self.test_inputs)
-        self.input_dim    = train_features.shape[1]
+        train_inputs = tf.Variable(tf.zeros(train_features.shape), trainable=False)
+        test_inputs  = tf.Variable(tf.zeros(test_features.shape),  trainable=False)
+        self.inputs  = tf.cond(placeholders['is_training'], 
+                               lambda: train_inputs, 
+                               lambda: test_inputs)
+        self.input_dim = train_features.shape[1]
         print('Finished in {} seconds.'.format(time() - start_t))
 
         self.num_data = features.shape[0]
         self.output_dim = placeholders['labels'].get_shape().as_list()[1]
         self.placeholders = placeholders
 
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate, beta1=FLAGS.beta1, beta2=FLAGS.beta2)
+        train_features_ph = tf.placeholder(tf.float32, name='train_features')
+        test_features_ph  = tf.placeholder(tf.float32, name='test_features')
+        self.pre_processing_ops.extend([tf.assign(train_inputs, train_features_ph),
+                                        tf.assign(test_inputs,  test_features_ph)])
+        self.pre_processing_dict.update({train_features_ph: train_features,
+                                         test_features_ph:  test_features})
 
-        self.post_p
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate, 
+                                                beta1=FLAGS.beta1, beta2=FLAGS.beta2)
 
         self.build()
-        self.train_features = train_features
-        self.test_features  = test_features
 
     def _build(self):
         # Aggregate
