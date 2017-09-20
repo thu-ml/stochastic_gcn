@@ -6,7 +6,7 @@ import sys
 import tensorflow as tf
 
 from gcn.utils import *
-from gcn.models import GraphSAGE, NeighbourMLP, AttentiveGCN
+from gcn.models import GraphSAGE, NeighbourMLP
 from scheduler import PyScheduler
 from tensorflow.contrib.opt import ScipyOptimizerInterface
 
