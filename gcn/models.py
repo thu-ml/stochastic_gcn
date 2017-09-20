@@ -38,9 +38,6 @@ class Model(object):
         self.opt_op = None
         self.multitask = kwargs.get('multitask', False)
 
-        self.pre_processing_ops  = []
-        self.pre_processing_dict = {}
-
     def _build(self):
         raise NotImplementedError
 
@@ -71,6 +68,13 @@ class Model(object):
             correct_prediction = tf.equal(tf.argmax(self.outputs, 1), 
                                           tf.argmax(self.placeholders['labels'], 1))
             self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+
+
+    def build_input(self):
+        if self.sparse_input:
+            self.inputs = tf.sparse_placeholder(tf.float32, name='input')
+        else:
+            self.inputs = tf.placeholder(tf.float32, name='input')
 
 
     def build(self):
@@ -122,42 +126,6 @@ class Model(object):
         print("Model restored from file: %s" % save_path)
 
 
-def build_input(features, name, update_ops, feed_dict):
-    # return: a Tensor or SparseTensor
-    #         some placeholders
-    #         an assignment op
-    if isinstance(features, np.ndarray):
-        var = tf.Variable(tf.zeros(features.shape), 
-                          trainable=False, name='{}_var'.format(name))
-        ph  = tf.placeholder(tf.float32, name='{}_ph'.format(name))
-
-        update_ops.append(tf.assign(var, ph))
-        feed_dict[ph] = features
-        return var
-    else:
-        var_data   = tf.Variable(tf.zeros((features.nnz)),
-                                 trainable=False, name='{}_var_d'.format(name))
-        var_coords = tf.Variable(tf.zeros((features.nnz, 2), dtype=tf.int64),
-                                 trainable=False, name='{}_var_c'.format(name))
-        var_shape  = tf.Variable(tf.zeros((2), dtype=tf.int64),
-                                 trainable=False, name='{}_var_s'.format(name))
-
-        ph_data    = tf.placeholder(tf.float32, name='{}_ph_d'.format(name))
-        ph_coords  = tf.placeholder(tf.int64, name='{}_ph_c'.format(name))
-        ph_shape   = tf.placeholder(tf.int64, name='{}_ph_s'.format(name))
-
-        update_ops.append(tf.assign(var_data, ph_data))
-        update_ops.append(tf.assign(var_coords, ph_coords))
-        update_ops.append(tf.assign(var_shape, ph_shape))
-
-        fcoo = sparse_to_tuple(features)
-        feed_dict[ph_coords] = fcoo[0]
-        feed_dict[ph_data]   = fcoo[1]
-        feed_dict[ph_shape]  = fcoo[2]
-        return tf.SparseTensor(indices=var_coords, values=var_data,
-                               dense_shape=var_shape)
-
-
 class GraphSAGE(Model):
     def __init__(self, L, placeholders, features, train_adj=None, test_adj=None, **kwargs):
         super(GraphSAGE, self).__init__(**kwargs)
@@ -165,10 +133,7 @@ class GraphSAGE(Model):
         self.L = L
 
         self.sparse_input = not isinstance(features, np.ndarray)
-        if self.sparse_input:
-            self.inputs = tf.sparse_placeholder(tf.float32, name='input')
-        else:
-            self.inputs = tf.placeholder(tf.float32, name='input')
+        self.build_input()
         self.input_dim  = features.shape[1]
         self.self_features = features
 
@@ -204,7 +169,7 @@ class GraphSAGE(Model):
         nbr_inputs = self.train_features[ids] if is_training else self.test_features[ids]
         if self.sparse_input:
             if not self.preprocess:
-                inputs = sparse_to_tuple(self.self_features)
+                inputs = sparse_to_tuple(self.self_features[ids])
             elif FLAGS.normalization=='gcn':
                 inputs = sparse_to_tuple(nbr_inputs)
             else:
@@ -240,6 +205,7 @@ class GraphSAGE(Model):
                                      placeholders=self.placeholders,
                                      act=tf.nn.relu,
                                      logging=self.logging,
+                                     sparse_inputs=self.sparse_input if l==1 else False,
                                      name='dense%d'%l, norm=FLAGS.layer_norm))
             self.layers.append(PlainAggregator(adjs[l], fields[l], fields[l+1], 
                                                name='agg%d'%(l+1)))
@@ -259,6 +225,9 @@ class NeighbourMLP(Model):
         super(NeighbourMLP, self).__init__(**kwargs)
 
         self.L = L
+        self.sparse_input = not isinstance(features, np.ndarray)
+        self.build_input()
+
         # Preprocess aggregation
         print('Preprocessing aggregations')
         start_t = time()
@@ -271,15 +240,9 @@ class NeighbourMLP(Model):
                 features.append(A.dot(features[-1]))
             return np.hstack(features)
 
-        train_features = _create_features(features, train_adj)
-        test_features  = _create_features(features, test_adj)
-
-        train_inputs = build_input(train_features, 'train', self.pre_processing_ops, self.pre_processing_dict)
-        test_inputs  = build_input(test_features,  'test',  self.pre_processing_ops, self.pre_processing_dict)
-        self.inputs  = tf.cond(placeholders['is_training'], 
-                               lambda: train_inputs, 
-                               lambda: test_inputs)
-        self.input_dim = train_features.shape[1]
+        self.train_features = _create_features(features, train_adj)
+        self.test_features  = _create_features(features, test_adj)
+        self.input_dim = self.train_features.shape[1]
         print('Finished in {} seconds.'.format(time() - start_t))
 
         self.num_data = features.shape[0]
@@ -291,11 +254,17 @@ class NeighbourMLP(Model):
 
         self.build()
 
-    def _build(self):
-        # Aggregate
-        field = self.placeholders['fields'][-1]
-        self.layers.append(GatherAggregator(field, name='gather'))
 
+    def get_data(self, feed_dict, is_training):
+        ids = feed_dict[self.placeholders['fields'][-1]]
+        inputs = self.train_features[ids] if is_training else self.test_features[ids]
+        if self.sparse_input:
+            inputs = sparse_to_tuple(inputs)
+
+        feed_dict[self.inputs] = inputs
+
+
+    def _build(self):
         for l in range(0, self.L-1):
             input_dim = self.input_dim if l==0 else FLAGS.hidden1
             self.layers.append(Dropout(1-self.placeholders['dropout'],
@@ -305,6 +274,7 @@ class NeighbourMLP(Model):
                                      placeholders=self.placeholders,
                                      act=tf.nn.relu,
                                      logging=self.logging,
+                                     sparse_inputs=self.sparse_input if l==0 else False,
                                      name='dense%d'%l))
 
         self.layers.append(Dropout(1-self.placeholders['dropout'],

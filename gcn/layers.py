@@ -19,11 +19,10 @@ def get_layer_uid(layer_name=''):
         return _LAYER_UIDS[layer_name]
 
 
-def sparse_dropout(x, keep_prob, noise_shape):
+def sparse_dropout(x, keep_prob):
     """Dropout for sparse tensors."""
-    random_tensor = keep_prob
-    random_tensor += tf.random_uniform(noise_shape)
-    dropout_mask = tf.cast(tf.floor(random_tensor), dtype=tf.bool)
+    random_tensor = tf.random_uniform(tf.shape(x.values))
+    dropout_mask  = random_tensor < keep_prob
     pre_out = tf.sparse_retain(x, dropout_mask)
     return pre_out * (1./keep_prob)
 
@@ -159,6 +158,9 @@ class Dropout(Layer):
         self.is_training = is_training
 
     def _call(self, inputs):
-        return layers.dropout(inputs, self.keep_prob, 
+        if isinstance(inputs, tf.SparseTensor):
+            return sparse_dropout(inputs, self.keep_prob)
+        else:
+            return layers.dropout(inputs, self.keep_prob, 
                                       is_training=self.is_training)
 
