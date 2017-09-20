@@ -150,6 +150,29 @@ class PlainAggregator(Layer):
             return tf.concat((a_self, a_neighbour), axis=1)
 
 
+class EMAAggregator(Layer):
+    def __init__(self, adj, alpha, history, **kwargs):
+        super(EMAAggregator, self).__init__(**kwargs)
+
+        self.adj     = adj
+        self.alpha   = alpha
+        self.history = history
+
+    def _call(self, inputs):
+        ofield_size = self.adj.dense_shape[0]
+        a_self      = inputs[:tf.cast(ofield_size, tf.int32)]
+
+        a_neighbour_hat  = dot(self.adj, inputs, sparse=True)
+        a_neighbour      = a_neighbour_hat * self.alpha + \
+                           self.history * (1-self.alpha)
+        self.new_history = a_neighbour
+        if FLAGS.normalization == 'gcn':
+            return a_neighbour
+        else:
+            return tf.concat((a_self, a_neighbour), axis=1)
+
+
+
 class Dropout(Layer):
     def __init__(self, keep_prob, is_training, **kwargs):
         super(Dropout, self).__init__(**kwargs)

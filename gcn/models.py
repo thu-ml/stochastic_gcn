@@ -38,8 +38,13 @@ class Model(object):
         self.opt_op = None
         self.multitask = kwargs.get('multitask', False)
 
+        self.history_ops = []
+
     def _build(self):
         raise NotImplementedError
+
+    def _history(self):
+        pass
 
     def _loss(self):
         # Weight decay loss on the first layer
@@ -89,6 +94,9 @@ class Model(object):
             print('{} shape = {}'.format(layer.name, hidden.get_shape()))
             self.activations.append(hidden)
         self.outputs = self.activations[-1]
+
+        with tf.variable_scope(self.name):
+            self._history()
 
         # Store model variables for easy access
         variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=self.name)
@@ -286,4 +294,129 @@ class NeighbourMLP(Model):
                                  logging=self.logging,
                                  name='dense%d'%(self.L-1)))
 
+
+class DoublyStochasticGCN(Model):
+    def __init__(self, L, placeholders, features, train_adj=None, test_adj=None, **kwargs):
+        super(DoublyStochasticGCN, self).__init__(**kwargs)
+
+        self.L = L
+
+        self.sparse_input = not isinstance(features, np.ndarray)
+        self.build_input()
+        self.input_dim  = features.shape[1]
+        self.self_features = features
+
+        if train_adj is not None:
+            # Preprocess first aggregation
+            print('Preprocessing first aggregation')
+            start_t = time()
+
+            self.train_features = train_adj.dot(features)
+            self.test_features  = test_adj.dot(features)
+
+            self.preprocess   = True
+            print('Finished in {} seconds.'.format(time() - start_t))
+        else:
+            self.preprocess = False
+
+        self.num_data = features.shape[0]
+        self.output_dim = placeholders['labels'].get_shape().as_list()[1]
+        self.placeholders = placeholders
+
+        # Create placeholders after each aggregation
+        self.history_ph = []
+        self.history    = []
+        if not self.preprocess:
+            if self.sparse_input:
+                self.history_ph.append(tf.sparse_placeholder(tf.float32, name='agg1_ph'))
+            else:
+                self.history_ph.append(tf.placeholder(tf.float32, name='agg1_ph'))
+            self.history.append(np.zeros(features.shape, dtype=np.float32))
+
+        for i in range(1, self.L):
+            self.history_ph.append(tf.placeholder(tf.float32, name='agg{}_ph'.format(i+1)))
+            self.history.append(np.zeros((features.shape[0], FLAGS.hidden1), dtype=np.float32))
+
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate, 
+                                                beta1=FLAGS.beta1, beta2=FLAGS.beta2)
+
+        self.build()
+
+
+    def get_data(self, feed_dict, is_training):
+        if not self.preprocess:
+            ids = feed_dict[self.placeholders['fields'][0]]
+        else:
+            ids = feed_dict[self.placeholders['fields'][1]]
+
+        # TODO currently we assumes no sparse input, preprocessing
+        nbr_inputs = self.train_features[ids] if is_training else self.test_features[ids]
+        if FLAGS.normalization=='gcn':
+            inputs = nbr_inputs
+        else:
+            inputs = np.hstack((self.self_features[ids], nbr_inputs))
+
+        feed_dict[self.inputs] = inputs
+
+        # Read history
+        for l in range(1, self.L):
+            field = feed_dict[self.placeholders['fields'][l+1]]
+            feed_dict[self.history_ph[l-1]] = self.history[l-1][field]
+
+    def train_one_step(self, sess, feed_dict, is_training):
+        self.get_data(feed_dict, is_training)
+
+        # Run
+        outs, hist = sess.run([[self.opt_op, self.loss, self.accuracy], self.history_ops],
+                              feed_dict=feed_dict)
+
+        # Write history
+        for l in range(1, self.L):
+            field = feed_dict[self.placeholders['fields'][l+1]]
+            self.history[l-1][field] = hist[l-1]
+
+        return outs
+
+
+    def _build(self):
+        # Aggregate
+        fields = self.placeholders['fields']
+        adjs   = self.placeholders['adj']
+        dim_s  = 1 if FLAGS.normalization=='gcn' else 2
+        alpha  = self.placeholders['alpha']
+
+        if not self.preprocess:
+            self.layers.append(EMAAggregator(adjs[0], alpha,
+                                             self.history_ph[0], name='agg1'))
+
+        for l in range(1, self.L):
+            input_dim  = self.input_dim if l==1 else FLAGS.hidden1
+            history_ph = self.history_ph[l-1] if self.preprocess else self.history_ph[l]
+
+            self.layers.append(Dropout(1-self.placeholders['dropout'],
+                                       self.placeholders['is_training']))
+            self.layers.append(Dense(input_dim=input_dim*dim_s,
+                                     output_dim=FLAGS.hidden1,
+                                     placeholders=self.placeholders,
+                                     act=tf.nn.relu,
+                                     logging=self.logging,
+                                     sparse_inputs=self.sparse_input if l==1 else False,
+                                     name='dense%d'%l, norm=FLAGS.layer_norm))
+            self.layers.append(EMAAggregator(adjs[l], alpha,
+                                             history_ph, name='agg%d'%(l+1)))
+
+        self.layers.append(Dropout(1-self.placeholders['dropout'],
+                                   self.placeholders['is_training']))
+        self.layers.append(Dense(input_dim=FLAGS.hidden1*dim_s,
+                                 output_dim=self.output_dim,
+                                 placeholders=self.placeholders,
+                                 act=lambda x: x,
+                                 logging=self.logging,
+                                 name='dense2', norm=False))
+
+    def _history(self):
+       self.activations.append(self.inputs)
+       for layer in self.layers:
+           if hasattr(layer, 'new_history'):
+               self.history_ops.append(layer.new_history)
 

@@ -6,7 +6,7 @@ import sys
 import tensorflow as tf
 
 from gcn.utils import *
-from gcn.models import GraphSAGE, NeighbourMLP
+from gcn.models import GraphSAGE, NeighbourMLP, DoublyStochasticGCN
 from scheduler import PyScheduler
 from tensorflow.contrib.opt import ScipyOptimizerInterface
 import scipy.sparse as sp
@@ -36,10 +36,15 @@ flags.DEFINE_float('beta2', 0.999, 'Beta2 for Adam')
 flags.DEFINE_string('normalization', 'gcn', 'gcn or graphsage')
 flags.DEFINE_bool('layer_norm', False, 'Layer normalization')
 
+flags.DEFINE_float('alpha', 1.0, 'EMA coefficient')
+
 # Load data
 num_data, train_adj, full_adj, features, labels, train_d, val_d, test_d = \
         load_data(FLAGS.dataset)
 print('Features shape = {}'.format(features.shape))
+# TODO hack
+features = features.todense()
+
 multitask = True if FLAGS.dataset=='ppi' else False
 sparse_input = isinstance(features, sp.csr.csr_matrix)
 
@@ -60,11 +65,13 @@ placeholders = {
     'labels': tf.placeholder(tf.float32, shape=(None, labels.shape[1]), 
               name='labels'),
     'dropout': tf.placeholder_with_default(0., shape=(), name='dropout'),
-    'is_training': tf.placeholder(tf.bool, shape=(), name='is_training')
+    'is_training': tf.placeholder(tf.bool, shape=(), name='is_training'),
+    'alpha': tf.placeholder(tf.float32, shape=(), name='alpha')
 }
 
 if FLAGS.model == 'graphsage':
-    model     = GraphSAGE(L, placeholders, features, train_adj, full_adj, multitask=multitask)
+    # model     = GraphSAGE(L, placeholders, features, train_adj, full_adj, multitask=multitask)
+    model     = DoublyStochasticGCN(L, placeholders, features, train_adj, full_adj, multitask=multitask)
 else:
     model     = NeighbourMLP(L, placeholders, features, train_adj, full_adj, multitask=multitask)
 
@@ -80,6 +87,7 @@ sess = tf.Session()
 def evaluate(data):
     feed_dict = eval_sch.batch(data)
     feed_dict[placeholders['is_training']] = False
+    feed_dict[placeholders['alpha']] = 1.0
     model.get_data(feed_dict, False)
     t_test = time()
     los, acc, prd = sess.run([model.loss, model.accuracy, pred], 
@@ -110,12 +118,14 @@ def SGDTrain():
             tsch += time() - t1
             if feed_dict==None:
                 break
-            model.get_data(feed_dict, True)
+            # model.get_data(feed_dict, True)
             feed_dict[placeholders['dropout']] = FLAGS.dropout
             feed_dict[placeholders['is_training']] = True
+            feed_dict[placeholders['alpha']] = 1.0 if epoch==0 else FLAGS.alpha
 
             # Training step
-            outs = sess.run([model.opt_op, model.loss, model.accuracy], feed_dict=feed_dict)
+            # outs = sess.run([model.opt_op, model.loss, model.accuracy], feed_dict=feed_dict)
+            outs = model.train_one_step(sess, feed_dict, True)
             avg_loss.add(outs[1])
             avg_acc .add(outs[2])
             if iter % 100 == 0:
