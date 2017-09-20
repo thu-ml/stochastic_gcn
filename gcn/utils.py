@@ -30,7 +30,7 @@ def sample_mask(idx, l):
     return np.array(mask, dtype=np.bool)
 
 
-def load_data(dataset_str):
+def load_gcn_data(dataset_str):
     npz_file = 'data/{}_{}.npz'.format(dataset_str, FLAGS.normalization)
     if os.path.exists(npz_file):
         start_time = time()
@@ -378,6 +378,14 @@ def sparse_to_tuple(sparse_mx):
     return sparse_mx
 
 
+def load_data(dataset):
+    gcn_datasets = set(['cora', 'citeseer', 'pubmed'])
+    if dataset in gcn_datasets:
+        return load_gcn_data(dataset)
+    else:
+        return load_graphsage_data('data/{}'.format(dataset))
+
+
 def tuple_to_coo(tuple_mx):
     def to_coo(t):
         return sp.coo_matrix((t[1], (t[0][:,0],t[0][:,1])), t[2])
@@ -387,140 +395,6 @@ def tuple_to_coo(tuple_mx):
     else:
         tuple_mx = to_coo(tuple_mx)
     return tuple_mx
-
-
-
-def preprocess_features(features):
-    """Row-normalize feature matrix and convert to tuple representation"""
-    rowsum = np.array(features.sum(1)) + 1e-9
-    r_inv = np.power(rowsum, -1).flatten()
-    r_inv[np.isinf(r_inv)] = 0.
-    r_mat_inv = sp.diags(r_inv, 0)
-    features = r_mat_inv.dot(features)
-    return sparse_to_tuple(features)
-
-
-def normalize_adj(adj):
-    """Symmetrically normalize adjacency matrix."""
-    adj = sp.coo_matrix(adj)
-    rowsum = np.array(adj.sum(1))
-    d_inv_sqrt = np.power(rowsum, -0.5).flatten()
-    d_inv_sqrt[np.isinf(d_inv_sqrt)] = 0.
-    d_mat_inv_sqrt = sp.diags(d_inv_sqrt, 0)
-    return adj.dot(d_mat_inv_sqrt).transpose().dot(d_mat_inv_sqrt).tocoo()
-
-
-def preprocess_adj(adj):
-    """Preprocessing of adjacency matrix for simple GCN model and conversion to tuple representation."""
-    adj_normalized = normalize_adj(adj + sp.eye(adj.shape[0]))
-    return sparse_to_tuple(adj_normalized)
-
-
-def construct_feed_dict(features, support, labels, labels_mask, placeholders):
-    """Construct feed dictionary."""
-    feed_dict = dict()
-    feed_dict.update({placeholders['labels']: labels})
-    feed_dict.update({placeholders['labels_mask']: labels_mask})
-    feed_dict.update({placeholders['features']: features})
-    feed_dict.update({placeholders['support'][i]: support[i] for i in range(len(support))})
-    feed_dict.update({placeholders['num_features_nonzero']: features[1].shape})
-    return feed_dict
-
-
-def fast_construct_feed_dict(features, batch, labels, placeholders):
-    """Construct feed dictionary."""
-    supports = sparse_to_tuple(batch.adjs)
-    f = sparse_to_tuple(features[batch.fields[0]])
-    y = labels[batch.fields[-1]]
-
-    feed_dict = dict()
-    feed_dict.update({placeholders['labels']: y})
-    feed_dict.update({placeholders['features']: f})
-    feed_dict.update({placeholders['support_%d'%(i+1)][0]: supports[i] for i in range(len(supports))})
-    feed_dict.update({placeholders['num_features_nonzero']: f[1].shape})
-    return feed_dict
-
-
-def vr_construct_feed_dict(Ax, support, batch, labels, placeholders):
-    features = sparse_to_tuple(Ax[batch.fields[1]])
-    hidden_fields = batch.fields[1]
-    subsampled_support = sparse_to_tuple(batch.adjs[1])
-    support = sparse_to_tuple(support[batch.fields[2]])
-    y = labels[batch.fields[-1]]
-
-    feed_dict = dict()
-    feed_dict.update({placeholders['labels']: y})
-    feed_dict.update({placeholders['features']: features})
-    feed_dict.update({placeholders['hidden_fields']: hidden_fields})
-    feed_dict.update({placeholders['support']: support})
-    feed_dict.update({placeholders['subsampled_support']: subsampled_support})
-    feed_dict.update({placeholders['num_features_nonzero']: features[1].shape})
-    return feed_dict
-
-
-def chebyshev_polynomials(adj, k):
-    """Calculate Chebyshev polynomials up to order k. Return a list of sparse matrices (tuple representation)."""
-    print("Calculating Chebyshev polynomials up to order {}...".format(k))
-
-    adj_normalized = normalize_adj(adj)
-    laplacian = sp.eye(adj.shape[0]) - adj_normalized
-    largest_eigval, _ = eigsh(laplacian, 1, which='LM')
-    scaled_laplacian = (2. / largest_eigval[0]) * laplacian - sp.eye(adj.shape[0])
-
-    t_k = list()
-    t_k.append(sp.eye(adj.shape[0]))
-    t_k.append(scaled_laplacian)
-
-    def chebyshev_recurrence(t_k_minus_one, t_k_minus_two, scaled_lap):
-        s_lap = sp.csr_matrix(scaled_lap, copy=True)
-        return 2 * s_lap.dot(t_k_minus_one) - t_k_minus_two
-
-    for i in range(2, k+1):
-        t_k.append(chebyshev_recurrence(t_k[-1], t_k[-2], scaled_laplacian))
-
-    return sparse_to_tuple(t_k)
-
-
-def generate_batches(train_mask, batch_size):
-    # Find all non-zeros
-    observed = np.array(np.nonzero(train_mask)).flatten()
-    observed = np.random.permutation(observed)
-    masks = []
-    N = len(observed)
-    for i in range(0, N, batch_size):
-        obs_batch = observed[i:i+batch_size]
-        mask = np.zeros_like(train_mask)
-        mask[obs_batch] = True
-        masks.append(mask)
-    return masks
-
-def L_neighbour(mask, adj, L):
-    eadj = adj + sp.eye(adj.shape[0])
-    current_mask = mask
-    for i in range(L):
-        current_mask = eadj.dot(current_mask) > 0
-    return current_mask
-
-
-def least_squares(A, B, reg):
-    D = int(A.get_shape()[1])
-    ATA = tf.matmul(A, A, transpose_a=True) + tf.eye(D) * reg
-    ATB = tf.matmul(A, B, transpose_a=True)
-    return tf.cholesky_solve(tf.cholesky(ATA), ATB)
-
-
-def least_squares_A(H, Z, W, gamma, beta):
-    # min_A gamma ||A-H||^2 + beta ||Z-AW||^2
-    D = int(W.get_shape()[0])
-    lhs = tf.transpose(gamma * tf.eye(D) + beta * tf.matmul(W, W, transpose_b=True))
-    rhs = tf.transpose(gamma * H + beta * tf.matmul(Z, W, transpose_b=True))
-    AT  = tf.cholesky_solve(tf.cholesky(lhs), rhs)
-    return tf.transpose(AT)
-
-
-def hinge_loss(Y, Z):
-    # return tf.maximum(0.0, 1.0 - (2*Y-1)*Z)
-    return tf.losses.hinge_loss(labels=Y, logits=Z, reduction=tf.losses.Reduction.NONE)
 
 
 class Averager:

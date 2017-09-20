@@ -23,27 +23,20 @@ flags.DEFINE_string('model', 'graphsage', 'Model string.')  # 'graphsage', 'mlp'
 flags.DEFINE_float('learning_rate', 0.01, 'Initial learning rate.')
 flags.DEFINE_integer('epochs', 200, 'Number of epochs to train.')
 flags.DEFINE_integer('hidden1', 32, 'Number of units in hidden layer 1.')
-flags.DEFINE_integer('adims', 16, 'Dimension of attention')
 flags.DEFINE_float('dropout', 0.5, 'Dropout rate (1 - keep probability).')
 flags.DEFINE_float('weight_decay', 5e-4, 'Weight for L2 loss on embedding matrix.')
 flags.DEFINE_integer('early_stopping', 10, 'Tolerance for early stopping (# of epochs).')
 flags.DEFINE_integer('batch_size', 1000, 'Minibatch size for SGD')
 flags.DEFINE_integer('num_layers', 2, 'Number of layers')
 flags.DEFINE_integer('num_hops', 3, 'Number of neighbour hops')
-flags.DEFINE_bool('vr', True, 'Variance reduction for vrgcn')
 flags.DEFINE_float('beta1', 0.9, 'Beta1 for Adam')
 flags.DEFINE_float('beta2', 0.999, 'Beta2 for Adam')
 flags.DEFINE_string('normalization', 'gcn', 'gcn or graphsage')
 flags.DEFINE_bool('layer_norm', False, 'Layer normalization')
 
 # Load data
-gcn_datasets = set(['cora', 'citeseer', 'pubmed'])
-if FLAGS.dataset in gcn_datasets:
-    num_data, train_adj, full_adj, features, labels, train_d, val_d, test_d = \
-            load_data(FLAGS.dataset)
-else:
-    num_data, train_adj, full_adj, features, labels, train_d, val_d, test_d = \
-            load_graphsage_data('data/{}'.format(FLAGS.dataset))
+num_data, train_adj, full_adj, features, labels, train_d, val_d, test_d = \
+        load_data(FLAGS.dataset)
 print('Features shape = {}'.format(features.shape))
 
 L = FLAGS.num_layers
@@ -64,8 +57,8 @@ placeholders = {
 
 multitask = True if FLAGS.dataset=='ppi' else False
 if L==2:
-    train_degrees   = np.array([10000, 10000], dtype=np.int32)
-    test_degrees    = np.array([10000, 10000], dtype=np.int32)
+    train_degrees   = np.array([1, 10000], dtype=np.int32)
+    test_degrees    = np.array([1, 10000], dtype=np.int32)
 else:
     train_degrees   = np.array([1, 1, 1], dtype=np.int32)
     test_degrees    = np.array([1, 1, 1], dtype=np.int32)
