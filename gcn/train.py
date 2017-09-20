@@ -30,6 +30,7 @@ flags.DEFINE_integer('early_stopping', 10, 'Tolerance for early stopping (# of e
 flags.DEFINE_integer('batch_size', 1000, 'Minibatch size for SGD')
 flags.DEFINE_integer('num_layers', 2, 'Number of layers')
 flags.DEFINE_integer('num_hops', 3, 'Number of neighbour hops')
+flags.DEFINE_integer('degree', 20, 'Neighbour subsampling size')
 flags.DEFINE_float('beta1', 0.9, 'Beta1 for Adam')
 flags.DEFINE_float('beta2', 0.999, 'Beta2 for Adam')
 flags.DEFINE_string('normalization', 'gcn', 'gcn or graphsage')
@@ -44,7 +45,7 @@ sparse_input = isinstance(features, sp.csr.csr_matrix)
 
 L = FLAGS.num_layers
 if L==2:
-    train_degrees   = np.array([1, 10000], dtype=np.int32)
+    train_degrees   = np.array([1, FLAGS.degree], dtype=np.int32)
     test_degrees    = np.array([1, 10000], dtype=np.int32)
 else:
     train_degrees   = np.array([1, 1, 1], dtype=np.int32)
