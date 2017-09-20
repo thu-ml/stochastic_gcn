@@ -96,3 +96,5 @@ ENV/
 .ropeproject
 
 *.pickle
+
+gcn/_scheduler.cpp
