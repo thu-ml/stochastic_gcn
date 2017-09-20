@@ -86,23 +86,15 @@ class Layer(object):
 
 class Dense(Layer):
     """Dense layer."""
-    def __init__(self, input_dim, output_dim, placeholders, dropout=0., sparse_inputs=False,
+    def __init__(self, input_dim, output_dim, placeholders, sparse_inputs=False,
                  act=tf.nn.relu, norm=True, bias=False, featureless=False, **kwargs):
         super(Dense, self).__init__(**kwargs)
-
-        if dropout:
-            self.dropout = placeholders['dropout']
-        else:
-            self.dropout = 0.
 
         self.act = act
         self.sparse_inputs = sparse_inputs
         self.featureless = featureless
         self.bias = bias
         self.norm = norm
-
-        # helper variable for sparse dropout
-        self.num_features_nonzero = placeholders.get('num_features_nonzero', None)
 
         with tf.variable_scope(self.name + '_vars'):
             self.vars['weights'] = glorot([input_dim, output_dim],
@@ -116,12 +108,6 @@ class Dense(Layer):
     def _call(self, inputs):
         x = inputs
 
-        # dropout
-        # if self.sparse_inputs:
-        #     x = sparse_dropout(x, 1-self.dropout, self.num_features_nonzero)
-        # else:
-        #     x = tf.nn.dropout(x, 1-self.dropout)
-
         # transform
         output = dot(x, self.vars['weights'], sparse=self.sparse_inputs)
 
@@ -133,152 +119,6 @@ class Dense(Layer):
             output = layers.layer_norm(output)
 
         return self.act(output)
-
-
-class GraphConvolution(Layer):
-    """Graph convolution layer."""
-    def __init__(self, input_dim, output_dim, placeholders, dropout=0.,
-                 sparse_inputs=False, act=tf.nn.relu, bias=False,
-                 featureless=False, **kwargs):
-        super(GraphConvolution, self).__init__(**kwargs)
-
-        if dropout:
-            self.dropout = placeholders['dropout']
-        else:
-            self.dropout = 0.
-
-        self.act = act
-        self.support = placeholders['support']
-        self.sparse_inputs = sparse_inputs
-        self.featureless = featureless
-        self.bias = bias
-
-        # helper variable for sparse dropout
-        self.num_features_nonzero = placeholders['num_features_nonzero']
-
-        with tf.variable_scope(self.name + '_vars'):
-            for i in range(len(self.support)):
-                self.vars['weights_' + str(i)] = glorot([input_dim, output_dim],
-                                                        name='weights_' + str(i))
-            if self.bias:
-                self.vars['bias'] = zeros([output_dim], name='bias')
-
-        if self.logging:
-            self._log_vars()
-
-    def _call(self, inputs):
-        x = inputs
-
-        # dropout
-        if self.sparse_inputs:
-            x = sparse_dropout(x, 1-self.dropout, self.num_features_nonzero)
-        else:
-            x = tf.nn.dropout(x, 1-self.dropout)
-
-        # convolve
-        supports = list()
-        for i in range(len(self.support)):
-            if not self.featureless:
-                pre_sup = dot(x, self.vars['weights_' + str(i)],
-                              sparse=self.sparse_inputs)
-            else:
-                pre_sup = self.vars['weights_' + str(i)]
-            support = dot(self.support[i], pre_sup, sparse=True)
-            supports.append(support)
-        output = tf.add_n(supports)
-
-        # bias
-        if self.bias:
-            output += self.vars['bias']
-
-        return self.act(output)
-
-
-class MyGraphConvolution(Layer):
-    """Graph convolution layer."""
-    def __init__(self, input_dim, output_dim, placeholders, dropout=0.,
-                 sparse_inputs=False, act=tf.nn.relu, bias=False,
-                 featureless=False, support=None, **kwargs):
-        super(MyGraphConvolution, self).__init__(**kwargs)
-
-        if dropout:
-            self.dropout = placeholders['dropout']
-        else:
-            self.dropout = 0.
-
-        self.act = act
-        if support is None:
-            self.support = placeholders['support']
-        else:
-            self.support = support
-        self.sparse_inputs = sparse_inputs
-        self.featureless = featureless
-        self.bias = bias
-
-        # helper variable for sparse dropout
-        self.num_features_nonzero = placeholders.get('num_features_nonzero', None)
-
-        with tf.variable_scope(self.name + '_vars'):
-            self.vars['weights'] = glorot([input_dim, output_dim],
-                                                        name='weights')
-            if self.bias:
-                self.vars['bias'] = zeros([output_dim], name='bias')
-
-        if self.logging:
-            self._log_vars()
-
-    def _call(self, inputs):
-        x = inputs
-
-        # dropout
-        if self.sparse_inputs:
-            x = sparse_dropout(x, 1-self.dropout, self.num_features_nonzero)
-        else:
-            x = tf.nn.dropout(x, 1-self.dropout)
-
-        # convolve
-        if not self.featureless:
-            pre_sup = dot(x, self.vars['weights'],
-                          sparse=self.sparse_inputs)
-        else:
-            pre_sup = self.vars['weights']
-        output = dot(self.support, pre_sup, sparse=True)
-
-        # bias
-        if self.bias:
-            output += self.vars['bias']
-
-        return self.act(output)
-
-
-class VarianceReductedAggregator(Layer):
-    # H -> Z=AH
-    # Z = subsampled_support * (inputs - old[input_fields]) + support * old
-    # subsampled_support: outputs_fields * input_fields matrix
-    # support (A)       : outputs_fields * n            matrix
-    def __init__(self, num_data, input_dim,
-                 input_fields, 
-                 subsampled_support, support, **kwargs):
-        super(VarianceReductedAggregator, self).__init__(**kwargs)
-
-        self.input_fields = input_fields
-        self.subsampled_support = subsampled_support
-        self.support = support
-
-        with tf.variable_scope(self.name + '_vars'):
-            self.old_activation = tf.Variable(tf.zeros([num_data, input_dim]), trainable=False, name='activation')
-
-
-    def _call(self, inputs):
-        old_activations = tf.gather(self.old_activation, self.input_fields)
-        norm = lambda x: tf.sqrt(tf.reduce_sum(tf.square(x)))
-        sim = tf.reduce_sum(inputs*old_activations) / norm(inputs) / norm(old_activations)
-        output = dot(self.subsampled_support, inputs-old_activations, sparse=True) +\
-                 dot(self.support,            self.old_activation, sparse=True)
-        output = tf.Print(output, [sim])
-
-        self.post_updates.append((self.old_activation, self.input_fields, inputs))
-        return output
 
 
 class GatherAggregator(Layer):
@@ -311,35 +151,6 @@ class PlainAggregator(Layer):
             return tf.concat((a_self, a_neighbour), axis=1)
 
 
-class AttentionAggregator(Layer):
-    def __init__(self, adj, key_dim, value_dim, **kwargs):
-        super(AttentionAggregator, self).__init__(**kwargs)
-        self.adj       = adj
-        self.key_dim   = key_dim
-        self.value_dim = value_dim
-
-        self.Ar        = adj.indices[:,0]
-        self.Ac        = adj.indices[:,1]
-
-    def _call(self, inputs):
-        key_dim = self.key_dim
-        Q  = inputs[:, :key_dim]
-        K  = inputs[:, key_dim:key_dim*2]
-        V  = inputs[:, key_dim*2:]
-
-        Qe = tf.gather(Q, self.Ar)
-        Ke = tf.gather(K, self.Ac)
-        
-        QKv = tf.reduce_sum(Qe * Ke, -1) / \
-              tf.sqrt(tf.constant(self.key_dim, tf.float32))
-        Qkv = tf.SparseTensor(self.adj.indices, QKv, self.adj.dense_shape)
-        Attention = tf.sparse_softmax(Qkv)
-
-        a_neighbour = dot(Attention, V, sparse=True)
-        a_self      = V[:tf.cast(self.adj.dense_shape[0], tf.int32), :]
-        return tf.concat((a_self, a_neighbour), axis=1)
-
-
 class Dropout(Layer):
     def __init__(self, keep_prob, is_training, **kwargs):
         super(Dropout, self).__init__(**kwargs)
@@ -351,9 +162,3 @@ class Dropout(Layer):
         return layers.dropout(inputs, self.keep_prob, 
                                       is_training=self.is_training)
 
-class LayerNorm(Layer):
-    def __init__(self, **kwargs):
-        super(LayerNorm, self).__init__(**kwargs)
-
-    def _call(self, inputs):
-        return layers.layer_norm(inputs)
