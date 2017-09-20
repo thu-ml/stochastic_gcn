@@ -3,6 +3,7 @@ from gcn.metrics import *
 from gcn.inits import *
 from time import time
 import scipy.sparse as sp
+from gcn.utils import sparse_to_tuple
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
@@ -120,16 +121,49 @@ class Model(object):
         print("Model restored from file: %s" % save_path)
 
 
+def build_input(features, name, update_ops, feed_dict):
+    # return: a Tensor or SparseTensor
+    #         some placeholders
+    #         an assignment op
+    if isinstance(features, np.ndarray):
+        var = tf.Variable(tf.zeros(features.shape), 
+                          trainable=False, name='{}_var'.format(name))
+        ph  = tf.placeholder(tf.float32, name='{}_ph'.format(name))
+
+        update_ops.append(tf.assign(var, ph))
+        feed_dict[ph] = features
+        return var
+    else:
+        var_data   = tf.Variable(tf.zeros((features.nnz)),
+                                 trainable=False, name='{}_var_d'.format(name))
+        var_coords = tf.Variable(tf.zeros((features.nnz, 2), dtype=tf.int64),
+                                 trainable=False, name='{}_var_c'.format(name))
+        var_shape  = tf.Variable(tf.zeros((2), dtype=tf.int64),
+                                 trainable=False, name='{}_var_s'.format(name))
+
+        ph_data    = tf.placeholder(tf.float32, name='{}_ph_d'.format(name))
+        ph_coords  = tf.placeholder(tf.int64, name='{}_ph_c'.format(name))
+        ph_shape   = tf.placeholder(tf.int64, name='{}_ph_s'.format(name))
+
+        update_ops.append(tf.assign(var_data, ph_data))
+        update_ops.append(tf.assign(var_coords, ph_coords))
+        update_ops.append(tf.assign(var_shape, ph_shape))
+
+        fcoo = sparse_to_tuple(features)
+        feed_dict[ph_coords] = fcoo[0]
+        feed_dict[ph_data]   = fcoo[1]
+        feed_dict[ph_shape]  = fcoo[2]
+        return tf.SparseTensor(indices=var_coords, values=var_data,
+                               dense_shape=var_shape)
+
+
 class GraphSAGE(Model):
     def __init__(self, L, placeholders, features, train_adj=None, test_adj=None, **kwargs):
         super(GraphSAGE, self).__init__(**kwargs)
 
         self.L = L
 
-        self_inputs  = tf.Variable(tf.zeros(features.shape),       trainable=False)
-        features_ph  = tf.placeholder(tf.float32, name='features')
-        self.pre_processing_ops  = [tf.assign(self_inputs,  features_ph)]
-        self.pre_processing_dict = {features_ph: features}
+        self_inputs = build_input(features, 'self', self.pre_processing_ops, self.pre_processing_dict)
 
         if train_adj is not None:
             # Preprocess first aggregation
@@ -139,8 +173,9 @@ class GraphSAGE(Model):
             train_features = train_adj.dot(features)
             test_features  = test_adj.dot(features)
 
-            train_inputs = tf.Variable(tf.zeros(train_features.shape), trainable=False)
-            test_inputs  = tf.Variable(tf.zeros(test_features.shape),  trainable=False)
+            train_inputs = build_input(train_features, 'train', self.pre_processing_ops, self.pre_processing_dict)
+            test_inputs  = build_input(test_features,  'test',  self.pre_processing_ops, self.pre_processing_dict)
+
             nbr_inputs   = tf.cond(placeholders['is_training'], 
                                         lambda: train_inputs, 
                                         lambda: test_inputs)
@@ -152,13 +187,6 @@ class GraphSAGE(Model):
             self.preprocess   = True
 
             print('Finished in {} seconds.'.format(time() - start_t))
-
-            train_features_ph = tf.placeholder(tf.float32, name='train_features')
-            test_features_ph  = tf.placeholder(tf.float32, name='test_features')
-            self.pre_processing_ops.extend([tf.assign(train_inputs, train_features_ph),
-                                            tf.assign(test_inputs,  test_features_ph)])
-            self.pre_processing_dict.update({train_features_ph: train_features,
-                                             test_features_ph:  test_features})
         else:
             self.inputs     = self_inputs
             self.input_dim  = features.shape[1]
@@ -229,8 +257,8 @@ class NeighbourMLP(Model):
         train_features = _create_features(features, train_adj)
         test_features  = _create_features(features, test_adj)
 
-        train_inputs = tf.Variable(tf.zeros(train_features.shape), trainable=False)
-        test_inputs  = tf.Variable(tf.zeros(test_features.shape),  trainable=False)
+        train_inputs = build_input(train_features, 'train', self.pre_processing_ops, self.pre_processing_dict)
+        test_inputs  = build_input(test_features,  'test',  self.pre_processing_ops, self.pre_processing_dict)
         self.inputs  = tf.cond(placeholders['is_training'], 
                                lambda: train_inputs, 
                                lambda: test_inputs)
@@ -240,13 +268,6 @@ class NeighbourMLP(Model):
         self.num_data = features.shape[0]
         self.output_dim = placeholders['labels'].get_shape().as_list()[1]
         self.placeholders = placeholders
-
-        train_features_ph = tf.placeholder(tf.float32, name='train_features')
-        test_features_ph  = tf.placeholder(tf.float32, name='test_features')
-        self.pre_processing_ops.extend([tf.assign(train_inputs, train_features_ph),
-                                        tf.assign(test_inputs,  test_features_ph)])
-        self.pre_processing_dict.update({train_features_ph: train_features,
-                                         test_features_ph:  test_features})
 
         self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate, 
                                                 beta1=FLAGS.beta1, beta2=FLAGS.beta2)

@@ -59,42 +59,60 @@ def load_gcn_data(dataset_str):
                     objects.append(pkl.load(f))
 
         x, y, tx, ty, allx, ally, graph = tuple(objects)
-        #print(y.shape, ty.shape, ally.shape)
-        test_idx_reorder = parse_index_file("data/ind.{}.test.index".format(dataset_str))
-        test_idx_range = np.sort(test_idx_reorder)
 
-        if dataset_str == 'citeseer':
-            # Fix citeseer dataset (there are some isolated nodes in the graph)
-            # Find isolated nodes, add them as zero-vecs into the right position
-            test_idx_range_full = range(min(test_idx_reorder), max(test_idx_reorder)+1)
-            tx_extended = sp.lil_matrix((len(test_idx_range_full), x.shape[1]))
-            tx_extended[test_idx_range-min(test_idx_range), :] = tx
-            tx = tx_extended
-            ty_extended = np.zeros((len(test_idx_range_full), y.shape[1]))
-            ty_extended[test_idx_range-min(test_idx_range), :] = ty
-            ty = ty_extended
+        if dataset_str != 'nell':
+            test_idx_reorder = parse_index_file("data/ind.{}.test.index".format(dataset_str))
+            test_idx_range = np.sort(test_idx_reorder)
 
-        features = sp.vstack((allx, tx)).tolil()
-        features[test_idx_reorder, :] = features[test_idx_range, :]
-        adj = nx.adjacency_matrix(nx.from_dict_of_lists(graph))
+            if dataset_str == 'citeseer':
+                # Fix citeseer dataset (there are some isolated nodes in the graph)
+                # Find isolated nodes, add them as zero-vecs into the right position
+                test_idx_range_full = range(min(test_idx_reorder), max(test_idx_reorder)+1)
+                tx_extended = sp.lil_matrix((len(test_idx_range_full), x.shape[1]))
+                tx_extended[test_idx_range-min(test_idx_range), :] = tx
+                tx = tx_extended
+                ty_extended = np.zeros((len(test_idx_range_full), y.shape[1]))
+                ty_extended[test_idx_range-min(test_idx_range), :] = ty
+                ty = ty_extended
 
-        labels = np.vstack((ally, ty))
-        labels[test_idx_reorder, :] = labels[test_idx_range, :]
+            features = sp.vstack((allx, tx)).tolil()
+            features[test_idx_reorder, :] = features[test_idx_range, :]
+            adj = nx.adjacency_matrix(nx.from_dict_of_lists(graph))
 
-        idx_test = test_idx_range.tolist()
-        idx_train = range(len(y))
-        idx_val = range(len(y), len(y)+500)
+            labels = np.vstack((ally, ty))
+            labels[test_idx_reorder, :] = labels[test_idx_range, :]
 
-        train_mask = sample_mask(idx_train, labels.shape[0])
-        val_mask = sample_mask(idx_val, labels.shape[0])
-        test_mask = sample_mask(idx_test, labels.shape[0])
+            idx_test = test_idx_range.tolist()
+            idx_train = range(len(y))
+            idx_val = range(len(y), len(y)+500)
 
-        y_train = np.zeros(labels.shape)
-        y_val = np.zeros(labels.shape)
-        y_test = np.zeros(labels.shape)
-        y_train[train_mask, :] = labels[train_mask, :]
-        y_val[val_mask, :] = labels[val_mask, :]
-        y_test[test_mask, :] = labels[test_mask, :]
+            train_mask = sample_mask(idx_train, labels.shape[0])
+            val_mask = sample_mask(idx_val, labels.shape[0])
+            test_mask = sample_mask(idx_test, labels.shape[0])
+
+            y_train = np.zeros(labels.shape)
+            y_val = np.zeros(labels.shape)
+            y_test = np.zeros(labels.shape)
+            y_train[train_mask, :] = labels[train_mask, :]
+            y_val[val_mask, :] = labels[val_mask, :]
+            y_test[test_mask, :] = labels[test_mask, :]
+        else:
+            test_idx_reorder = parse_index_file("data/ind.{}.test.index".format(dataset_str))
+            features = allx.tocsr()
+            adj = nx.adjacency_matrix(nx.from_dict_of_lists(graph))
+            labels = ally
+            idx_test = test_idx_reorder
+            idx_train = range(len(y))
+            idx_val = range(len(y), len(y)+969)
+            train_mask = sample_mask(idx_train, labels.shape[0])
+            val_mask = sample_mask(idx_val, labels.shape[0])
+            test_mask = sample_mask(idx_test, labels.shape[0])
+            y_train = np.zeros(labels.shape)
+            y_val = np.zeros(labels.shape)
+            y_test = np.zeros(labels.shape)
+            y_train[train_mask, :] = labels[train_mask, :]
+            y_val[val_mask, :] = labels[val_mask, :]
+            y_test[test_mask, :] = labels[test_mask, :]
 
         # num_data, (v, coords), feats, labels, train_d, val_d, test_d
         num_data = features.shape[0]
@@ -131,11 +149,15 @@ def load_gcn_data(dataset_str):
         full_v = full_v.astype(np.float32)
         full_coords = full_coords.astype(np.int32)
         train_v, train_coords = full_v, full_coords
-        feats = features.todense().astype(np.float32)
         labels = (y_train + y_val + y_test).astype(np.float32)
         train_data = np.nonzero(train_mask)[0].astype(np.int32)
         val_data   = np.nonzero(val_mask)[0].astype(np.int32)
         test_data  = np.nonzero(test_mask)[0].astype(np.int32)
+
+        if dataset_str != 'nell':
+            feats = features.todense().astype(np.float32)
+        else:
+            feats = (features.data, features.indices, features.indptr, features.shape)
 
         with open(npz_file, 'wb') as fwrite:
             np.savez(fwrite, num_data=num_data, 
@@ -152,6 +174,9 @@ def load_gcn_data(dataset_str):
 
     train_adj = _get_adj(train_v, train_coords)
     full_adj  = _get_adj(full_v,  full_coords)
+    if dataset_str == 'nell':
+        feats = sp.csr_matrix((feats[0], feats[1], feats[2]), 
+                              shape=feats[-1])
 
     return num_data, train_adj, full_adj, feats, labels, train_data, val_data, test_data
 
@@ -307,6 +332,14 @@ def load_graphsage_data(prefix, normalize=True):
     return num_data, train_adj, full_adj, feats, labels, train_data, val_data, test_data
 
 
+def load_data(dataset):
+    gcn_datasets = set(['cora', 'citeseer', 'pubmed', 'nell'])
+    if dataset in gcn_datasets:
+        return load_gcn_data(dataset)
+    else:
+        return load_graphsage_data('data/{}'.format(dataset))
+
+
 def sparse_to_tuple(sparse_mx):
     """Convert sparse matrix to tuple representation."""
     def to_tuple(mx):
@@ -325,14 +358,6 @@ def sparse_to_tuple(sparse_mx):
         sparse_mx = to_tuple(sparse_mx)
 
     return sparse_mx
-
-
-def load_data(dataset):
-    gcn_datasets = set(['cora', 'citeseer', 'pubmed'])
-    if dataset in gcn_datasets:
-        return load_gcn_data(dataset)
-    else:
-        return load_graphsage_data('data/{}'.format(dataset))
 
 
 def tuple_to_coo(tuple_mx):

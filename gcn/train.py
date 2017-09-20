@@ -9,6 +9,7 @@ from gcn.utils import *
 from gcn.models import GraphSAGE, NeighbourMLP
 from scheduler import PyScheduler
 from tensorflow.contrib.opt import ScipyOptimizerInterface
+import scipy.sparse as sp
 
 # Set random seed
 seed = 123
@@ -38,8 +39,16 @@ flags.DEFINE_bool('layer_norm', False, 'Layer normalization')
 num_data, train_adj, full_adj, features, labels, train_d, val_d, test_d = \
         load_data(FLAGS.dataset)
 print('Features shape = {}'.format(features.shape))
+multitask = True if FLAGS.dataset=='ppi' else False
+sparse_input = isinstance(features, sp.csr.csr_matrix)
 
 L = FLAGS.num_layers
+if L==2:
+    train_degrees   = np.array([1, 10000], dtype=np.int32)
+    test_degrees    = np.array([1, 10000], dtype=np.int32)
+else:
+    train_degrees   = np.array([1, 1, 1], dtype=np.int32)
+    test_degrees    = np.array([1, 1, 1], dtype=np.int32)
 
 # Define placeholders
 placeholders = {
@@ -50,18 +59,8 @@ placeholders = {
     'labels': tf.placeholder(tf.float32, shape=(None, labels.shape[1]), 
               name='labels'),
     'dropout': tf.placeholder_with_default(0., shape=(), name='dropout'),
-    'is_training': tf.placeholder(tf.bool, shape=(), name='is_training'),
-    'features' : tf.placeholder(tf.float32, shape=(None, None),
-                    name='features')
+    'is_training': tf.placeholder(tf.bool, shape=(), name='is_training')
 }
-
-multitask = True if FLAGS.dataset=='ppi' else False
-if L==2:
-    train_degrees   = np.array([1, 10000], dtype=np.int32)
-    test_degrees    = np.array([1, 10000], dtype=np.int32)
-else:
-    train_degrees   = np.array([1, 1, 1], dtype=np.int32)
-    test_degrees    = np.array([1, 1, 1], dtype=np.int32)
 
 if FLAGS.model == 'graphsage':
     model     = GraphSAGE(L, placeholders, features, train_adj, full_adj, multitask=multitask)
