@@ -36,11 +36,14 @@ class Model(object):
         self.opt_op = None
         self.multitask = kwargs.get('multitask', False)
 
+        self.pre_processing_ops  = []
+        self.pre_processing_dict = {}
+
     def _build(self):
         raise NotImplementedError
 
     def _loss(self):
-        # Weight decay loss
+        # Weight decay loss on the first layer
         l = 0
         while len(self.layers[l].vars.values()) == 0:
             l += 1
@@ -122,6 +125,12 @@ class GraphSAGE(Model):
         super(GraphSAGE, self).__init__(**kwargs)
 
         self.L = L
+
+        self_inputs  = tf.Variable(tf.zeros(features.shape),       trainable=False)
+        features_ph  = tf.placeholder(tf.float32, name='features')
+        self.pre_processing_ops  = [tf.assign(self_inputs,  features_ph)]
+        self.pre_processing_dict = {features_ph: features}
+
         if train_adj is not None:
             # Preprocess first aggregation
             print('Preprocessing first aggregation')
@@ -130,24 +139,28 @@ class GraphSAGE(Model):
             train_features = train_adj.dot(features)
             test_features  = test_adj.dot(features)
 
-            self.train_inputs = tf.Variable(tf.zeros(train_features.shape), trainable=False)
-            self.test_inputs  = tf.Variable(tf.zeros(test_features.shape),  trainable=False)
-            self.self_inputs  = tf.Variable(features,       trainable=False)
-            self.nbr_inputs   = tf.cond(placeholders['is_training'], 
-                                        lambda: self.train_inputs, 
-                                        lambda: self.test_inputs)
+            train_inputs = tf.Variable(tf.zeros(train_features.shape), trainable=False)
+            test_inputs  = tf.Variable(tf.zeros(test_features.shape),  trainable=False)
+            nbr_inputs   = tf.cond(placeholders['is_training'], 
+                                        lambda: train_inputs, 
+                                        lambda: test_inputs)
             if FLAGS.normalization=='gcn':
-                self.inputs   = self.nbr_inputs
+                self.inputs   = nbr_inputs
             else:
-                self.inputs       = tf.concat((self.self_inputs, self.nbr_inputs), -1)
+                self.inputs   = tf.concat((self_inputs, nbr_inputs), -1)
             self.input_dim    = features.shape[1]
             self.preprocess   = True
 
             print('Finished in {} seconds.'.format(time() - start_t))
-            self.train_features = train_features
-            self.test_features  = test_features
+
+            train_features_ph = tf.placeholder(tf.float32, name='train_features')
+            test_features_ph  = tf.placeholder(tf.float32, name='test_features')
+            self.pre_processing_ops.extend([tf.assign(train_inputs, train_features_ph),
+                                            tf.assign(test_inputs,  test_features_ph)])
+            self.pre_processing_dict.update({train_features_ph: train_features,
+                                             test_features_ph:  test_features})
         else:
-            self.inputs     = tf.Variable(features, trainable=False)
+            self.inputs     = self_inputs
             self.input_dim  = features.shape[1]
             self.preprocess = False
 
@@ -155,8 +168,8 @@ class GraphSAGE(Model):
         self.output_dim = placeholders['labels'].get_shape().as_list()[1]
         self.placeholders = placeholders
 
-        # self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate, beta1=FLAGS.beta1, beta2=FLAGS.beta2)
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate)
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate, 
+                                                beta1=FLAGS.beta1, beta2=FLAGS.beta2)
 
         self.build()
 
@@ -183,23 +196,11 @@ class GraphSAGE(Model):
                                      act=tf.nn.relu,
                                      logging=self.logging,
                                      name='dense%d'%l, norm=FLAGS.layer_norm))
-            # self.layers.append(Dense(input_dim=FLAGS.hidden1,
-            #                          output_dim=FLAGS.hidden1,
-            #                          placeholders=self.placeholders,
-            #                          act=tf.nn.relu,
-            #                          logging=self.logging,
-            #                          name='dense2%d'%l))
             self.layers.append(PlainAggregator(adjs[l], fields[l], fields[l+1], 
                                                name='agg%d'%(l+1)))
 
         self.layers.append(Dropout(1-self.placeholders['dropout'],
                                    self.placeholders['is_training']))
-        # self.layers.append(Dense(input_dim=FLAGS.hidden1*2,
-        #                          output_dim=FLAGS.hidden1,
-        #                          placeholders=self.placeholders,
-        #                          act=tf.nn.relu,
-        #                          logging=self.logging,
-        #                          name='dense2%d'%l))
         self.layers.append(Dense(input_dim=FLAGS.hidden1*dim_s,
                                  output_dim=self.output_dim,
                                  placeholders=self.placeholders,
@@ -241,6 +242,8 @@ class NeighbourMLP(Model):
         self.placeholders = placeholders
 
         self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate, beta1=FLAGS.beta1, beta2=FLAGS.beta2)
+
+        self.post_p
 
         self.build()
         self.train_features = train_features

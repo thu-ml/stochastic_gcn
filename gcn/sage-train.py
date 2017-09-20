@@ -71,11 +71,10 @@ else:
     test_degrees    = np.array([1, 1, 1], dtype=np.int32)
 
 if FLAGS.model == 'graphsage':
-    model     = GraphSAGE(L, placeholders, features, train_adj, full_adj)
-elif FLAGS.model == 'mlp':
-    model     = NeighbourMLP(L, placeholders, features, train_adj, full_adj, multitask=multitask)
+    model     = GraphSAGE(L, placeholders, features, train_adj, full_adj, multitask=multitask)
 else:
-    model     = AttentiveGCN(L, placeholders, features, multitask=multitask)
+    model     = NeighbourMLP(L, placeholders, features, train_adj, full_adj, multitask=multitask)
+
 pred      = model.predict()
 train_sch = PyScheduler(train_adj, labels, L, train_degrees, placeholders, train_d)
 eval_sch  = PyScheduler(full_adj,  labels, L, test_degrees,  placeholders)
@@ -99,11 +98,7 @@ def evaluate(data):
 print('Loading data to GPU...')
 t = time()
 sess.run(tf.global_variables_initializer())
-if FLAGS.model != 'agcn':
-    sess.run(tf.assign(model.train_inputs, placeholders['features']),
-             feed_dict={placeholders['features']: model.train_features})
-    sess.run(tf.assign(model.test_inputs,  placeholders['features']),
-             feed_dict={placeholders['features']: model.test_features})
+sess.run(model.pre_processing_ops, feed_dict=model.pre_processing_dict)
 print('Finished in {} seconds'.format(time()-t))
 
 cost_val = []
