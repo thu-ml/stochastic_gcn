@@ -154,10 +154,7 @@ def load_gcn_data(dataset_str):
         val_data   = np.nonzero(val_mask)[0].astype(np.int32)
         test_data  = np.nonzero(test_mask)[0].astype(np.int32)
 
-        if dataset_str != 'nell':
-            feats = features.todense().astype(np.float32)
-        else:
-            feats = (features.data, features.indices, features.indptr, features.shape)
+        feats = (features.data, features.indices, features.indptr, features.shape)
 
         with open(npz_file, 'wb') as fwrite:
             np.savez(fwrite, num_data=num_data, 
@@ -174,9 +171,8 @@ def load_gcn_data(dataset_str):
 
     train_adj = _get_adj(train_v, train_coords)
     full_adj  = _get_adj(full_v,  full_coords)
-    if dataset_str == 'nell':
-        feats = sp.csr_matrix((feats[0], feats[1], feats[2]), 
-                              shape=feats[-1])
+    feats = sp.csr_matrix((feats[0], feats[1], feats[2]), 
+                          shape=feats[-1])
 
     return num_data, train_adj, full_adj, feats, labels, train_data, val_data, test_data
 
