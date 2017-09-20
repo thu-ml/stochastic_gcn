@@ -77,21 +77,18 @@ sess = tf.Session()
 
 # Define model evaluation function
 def evaluate(data):
-    feed_dict_val = eval_sch.batch(data)
-    feed_dict_val[placeholders['is_training']] = False
+    feed_dict = eval_sch.batch(data)
+    feed_dict[placeholders['is_training']] = False
+    model.get_data(feed_dict, False)
     t_test = time()
     los, acc, prd = sess.run([model.loss, model.accuracy, pred], 
-                             feed_dict=feed_dict_val)
-    micro, macro  = calc_f1(prd, feed_dict_val[placeholders['labels']], multitask)
+                             feed_dict=feed_dict)
+    micro, macro  = calc_f1(prd, feed_dict[placeholders['labels']], multitask)
     return los, acc, micro, macro, (time()-t_test)
 
 
 # Init variables
-print('Loading data to GPU...')
-t = time()
 sess.run(tf.global_variables_initializer())
-sess.run(model.pre_processing_ops, feed_dict=model.pre_processing_dict)
-print('Finished in {} seconds'.format(time()-t))
 
 cost_val = []
 avg_loss = Averager(1)
@@ -112,7 +109,8 @@ def SGDTrain():
             tsch += time() - t1
             if feed_dict==None:
                 break
-            feed_dict.update({placeholders['dropout']: FLAGS.dropout})
+            model.get_data(feed_dict, True)
+            feed_dict[placeholders['dropout']] = FLAGS.dropout
             feed_dict[placeholders['is_training']] = True
 
             # Training step

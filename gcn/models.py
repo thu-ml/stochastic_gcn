@@ -4,6 +4,7 @@ from gcn.inits import *
 from time import time
 import scipy.sparse as sp
 from gcn.utils import sparse_to_tuple
+import numpy as np
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
@@ -163,33 +164,25 @@ class GraphSAGE(Model):
 
         self.L = L
 
-        self_inputs = build_input(features, 'self', self.pre_processing_ops, self.pre_processing_dict)
+        self.sparse_input = not isinstance(features, np.ndarray)
+        if self.sparse_input:
+            self.inputs = tf.sparse_placeholder(tf.float32, name='input')
+        else:
+            self.inputs = tf.placeholder(tf.float32, name='input')
+        self.input_dim  = features.shape[1]
+        self.self_features = features
 
         if train_adj is not None:
             # Preprocess first aggregation
             print('Preprocessing first aggregation')
             start_t = time()
 
-            train_features = train_adj.dot(features)
-            test_features  = test_adj.dot(features)
+            self.train_features = train_adj.dot(features)
+            self.test_features  = test_adj.dot(features)
 
-            train_inputs = build_input(train_features, 'train', self.pre_processing_ops, self.pre_processing_dict)
-            test_inputs  = build_input(test_features,  'test',  self.pre_processing_ops, self.pre_processing_dict)
-
-            nbr_inputs   = tf.cond(placeholders['is_training'], 
-                                        lambda: train_inputs, 
-                                        lambda: test_inputs)
-            if FLAGS.normalization=='gcn':
-                self.inputs   = nbr_inputs
-            else:
-                self.inputs   = tf.concat((self_inputs, nbr_inputs), -1)
-            self.input_dim    = features.shape[1]
             self.preprocess   = True
-
             print('Finished in {} seconds.'.format(time() - start_t))
         else:
-            self.inputs     = self_inputs
-            self.input_dim  = features.shape[1]
             self.preprocess = False
 
         self.num_data = features.shape[0]
@@ -201,6 +194,33 @@ class GraphSAGE(Model):
 
         self.build()
 
+
+    def get_data(self, feed_dict, is_training):
+        if not self.preprocess:
+            ids = feed_dict[self.placeholders['fields'][0]]
+        else:
+            ids = feed_dict[self.placeholders['fields'][1]]
+
+        nbr_inputs = self.train_features[ids] if is_training else self.test_features[ids]
+        if self.sparse_input:
+            if not self.preprocess:
+                inputs = sparse_to_tuple(self.self_features)
+            elif FLAGS.normalization=='gcn':
+                inputs = sparse_to_tuple(nbr_inputs)
+            else:
+                inputs = sparse_to_tuple(sp.hstack((self.self_features[ids], nbr_inputs)))
+        else:
+            nbr_inputs = self.train_features[ids] if is_training else self.test_features[ids]
+            if not self.preprocess:
+                inputs = self.self_features
+            elif FLAGS.normalization=='gcn':
+                inputs = nbr_inputs
+            else:
+                inputs = np.hstack((self.self_features[ids], nbr_inputs))
+
+        feed_dict[self.inputs] = inputs
+
+
     def _build(self):
         # Aggregate
         fields = self.placeholders['fields']
@@ -208,11 +228,8 @@ class GraphSAGE(Model):
         dim_s  = 1 if FLAGS.normalization=='gcn' else 2
 
         if not self.preprocess:
-            self.layers.append(GatherAggregator(fields[0], name='gather'))
             self.layers.append(PlainAggregator(adjs[0], fields[0], fields[1],
                                                name='agg1'))
-        else:
-            self.layers.append(GatherAggregator(fields[1], name='gather'))
 
         for l in range(1, self.L):
             input_dim = self.input_dim if l==1 else FLAGS.hidden1
