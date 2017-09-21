@@ -30,7 +30,7 @@ flags.DEFINE_integer('early_stopping', 10, 'Tolerance for early stopping (# of e
 flags.DEFINE_integer('batch_size', 1000, 'Minibatch size for SGD')
 flags.DEFINE_integer('num_layers', 2, 'Number of layers')
 flags.DEFINE_integer('num_hops', 3, 'Number of neighbour hops')
-flags.DEFINE_integer('degree', 20, 'Neighbour subsampling size')
+flags.DEFINE_integer('degree', 10000, 'Neighbour subsampling size')
 flags.DEFINE_float('beta1', 0.9, 'Beta1 for Adam')
 flags.DEFINE_float('beta2', 0.999, 'Beta2 for Adam')
 flags.DEFINE_string('normalization', 'gcn', 'gcn or graphsage')
@@ -102,6 +102,7 @@ avg_loss = Averager(1)
 avg_acc  = Averager(1)
 
 def SGDTrain():
+    amt_data = 0
     # Train model
     for epoch in range(FLAGS.epochs):
         train_sch.shuffle()
@@ -120,6 +121,7 @@ def SGDTrain():
             feed_dict[placeholders['dropout']] = FLAGS.dropout
             feed_dict[placeholders['is_training']] = True
             feed_dict[placeholders['alpha']] = 1.0 if epoch==0 else FLAGS.alpha
+            amt_data += feed_dict[placeholders['fields'][0]].shape[0]
 
             # Training step
             # outs = sess.run([model.opt_op, model.loss, model.accuracy], feed_dict=feed_dict)
@@ -142,7 +144,8 @@ def SGDTrain():
               "val_acc=", "{:.5f}".format(acc), 
               "mi F1={:.5f} ma F1={:.5f} ".format(micro, macro),
               "time=", "{:.5f}".format(time() - t),
-              "(sch {:.5f} s)".format(tsch))
+              "(sch {:.5f} s)".format(tsch),
+              "data = {}".format(amt_data))
     
         if epoch > FLAGS.early_stopping and cost_val[-1] > np.mean(cost_val[-(FLAGS.early_stopping+1):-1]):
             print("Early stopping...")
