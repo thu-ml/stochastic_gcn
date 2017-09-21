@@ -75,11 +75,18 @@ class Model(object):
             self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
 
-    def build_input(self):
+    def get_ph(self, name):
         if self.sparse_input:
-            self.inputs = tf.sparse_placeholder(tf.float32, name='input')
+            return tf.sparse_placeholder(tf.float32, name=name)
         else:
-            self.inputs = tf.placeholder(tf.float32, name='input')
+            return tf.placeholder(tf.float32, name=name)
+
+
+    def get_zeros(self, shape):
+        if self.sparse_input:
+            return np.zeros(shape, dtype=np.float32)
+        else:
+            return sp.csr_matrix(shape, dtype=np.float32)
 
 
     def build(self):
@@ -296,46 +303,49 @@ class NeighbourMLP(Model):
 
 
 class DoublyStochasticGCN(Model):
-    def __init__(self, L, placeholders, features, train_adj=None, test_adj=None, **kwargs):
+    def __init__(self, L, preprocess, placeholders, 
+                 features, train_adj, test_adj,
+                 **kwargs):
         super(DoublyStochasticGCN, self).__init__(**kwargs)
 
-        self.L = L
+        self.preprocess     = preprocess
+        self.sparse_input   = not isinstance(features, np.ndarray)
+        self.sparse_mm      = self.sparse_input
+        self.inputs_ph      = self.get_ph('input')
+        if not self.preprocess and self.sparse_input:
+            print('Warning: we do not support sparse input without pre-processing. Converting to dense...')
+            self.inputs     = tf.sparse_to_dense(self.inputs_ph.indices, 
+                                                 self.inputs_ph.dense_shape,
+                                                 self.inputs_ph.values)
+            self.sparse_mm  = False
+        else:
+            self.inputs     = self.inputs_ph
+        self.num_data       = features.shape[0]
+        self.input_dim      = features.shape[1]
+        self.self_dim       = 0 if FLAGS.normalization=='gcn' else self.input_dim
 
-        self.sparse_input = not isinstance(features, np.ndarray)
-        self.build_input()
-        self.input_dim  = features.shape[1]
-        self.self_features = features
-
-        if train_adj is not None:
-            # Preprocess first aggregation
-            print('Preprocessing first aggregation')
-            start_t = time()
-
+        if self.preprocess:
+            self.self_features  = features[:,:self.self_dim]
             self.train_features = train_adj.dot(features)
             self.test_features  = test_adj.dot(features)
-
-            self.preprocess   = True
-            print('Finished in {} seconds.'.format(time() - start_t))
+            self.L              = L-1
         else:
-            self.preprocess = False
+            self.self_features  = features
+            self.train_features = np.zeros((self.num_data, 0), dtype=np.float32)
+            self.test_features  = np.zeros((self.num_data, 0), dtype=np.float32)
+            self.L              = L
 
-        self.num_data = features.shape[0]
-        self.output_dim = placeholders['labels'].get_shape().as_list()[1]
-        self.placeholders = placeholders
+        self.agg0_dim       = FLAGS.hidden1 if self.preprocess else self.input_dim
+        self.output_dim     = placeholders['labels'].get_shape().as_list()[1]
+        self.placeholders   = placeholders
 
-        # Create placeholders after each aggregation
+        # Create history after each aggregation
         self.history_ph = []
         self.history    = []
-        if not self.preprocess:
-            if self.sparse_input:
-                self.history_ph.append(tf.sparse_placeholder(tf.float32, name='agg1_ph'))
-            else:
-                self.history_ph.append(tf.placeholder(tf.float32, name='agg1_ph'))
-            self.history.append(np.zeros(features.shape, dtype=np.float32))
-
-        for i in range(1, self.L):
-            self.history_ph.append(tf.placeholder(tf.float32, name='agg{}_ph'.format(i+1)))
-            self.history.append(np.zeros((features.shape[0], FLAGS.hidden1), dtype=np.float32))
+        for i in range(self.L):
+            dims = self.agg0_dim if i==0 else FLAGS.hidden1
+            self.history_ph.append(tf.placeholder(tf.float32, name='agg{}_ph'.format(i)))
+            self.history.append(np.zeros((features.shape[0], dims), dtype=np.float32))
 
         self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate, 
                                                 beta1=FLAGS.beta1, beta2=FLAGS.beta2)
@@ -344,24 +354,19 @@ class DoublyStochasticGCN(Model):
 
 
     def get_data(self, feed_dict, is_training):
-        if not self.preprocess:
-            ids = feed_dict[self.placeholders['fields'][0]]
-        else:
-            ids = feed_dict[self.placeholders['fields'][1]]
-
-        # TODO currently we assumes no sparse input, preprocessing
+        ids        = feed_dict[self.placeholders['fields'][0]]
         nbr_inputs = self.train_features[ids] if is_training else self.test_features[ids]
-        if FLAGS.normalization=='gcn':
-            inputs = nbr_inputs
+        if self.sparse_input:
+            inputs = sparse_to_tuple(sp.hstack((self.self_features[ids], nbr_inputs)))
         else:
             inputs = np.hstack((self.self_features[ids], nbr_inputs))
-
-        feed_dict[self.inputs] = inputs
+        feed_dict[self.inputs_ph] = inputs
 
         # Read history
-        for l in range(1, self.L):
+        for l in range(self.L):
             field = feed_dict[self.placeholders['fields'][l+1]]
-            feed_dict[self.history_ph[l-1]] = self.history[l-1][field]
+            feed_dict[self.history_ph[l]] = self.history[l][field]
+
 
     def train_one_step(self, sess, feed_dict, is_training):
         self.get_data(feed_dict, is_training)
@@ -373,7 +378,7 @@ class DoublyStochasticGCN(Model):
         # Write history
         for l in range(1, self.L):
             field = feed_dict[self.placeholders['fields'][l+1]]
-            self.history[l-1][field] = hist[l-1]
+            self.history[l][field] = hist[l]
 
         return outs
 
@@ -384,35 +389,40 @@ class DoublyStochasticGCN(Model):
         adjs   = self.placeholders['adj']
         dim_s  = 1 if FLAGS.normalization=='gcn' else 2
         alpha  = self.placeholders['alpha']
+        cnt    = 0
 
-        if not self.preprocess:
-            self.layers.append(EMAAggregator(adjs[0], alpha,
-                                             self.history_ph[0], name='agg1'))
-
-        for l in range(1, self.L):
-            input_dim  = self.input_dim if l==1 else FLAGS.hidden1
-            history_ph = self.history_ph[l-1] if self.preprocess else self.history_ph[l]
-
+        if self.preprocess:
             self.layers.append(Dropout(1-self.placeholders['dropout'],
                                        self.placeholders['is_training']))
-            self.layers.append(Dense(input_dim=input_dim*dim_s,
+            self.layers.append(Dense(input_dim=self.input_dim*dim_s,
                                      output_dim=FLAGS.hidden1,
                                      placeholders=self.placeholders,
                                      act=tf.nn.relu,
                                      logging=self.logging,
-                                     sparse_inputs=self.sparse_input if l==1 else False,
-                                     name='dense%d'%l, norm=FLAGS.layer_norm))
-            self.layers.append(EMAAggregator(adjs[l], alpha,
-                                             history_ph, name='agg%d'%(l+1)))
+                                     sparse_inputs=self.sparse_mm,
+                                     name='dense0', norm=FLAGS.layer_norm))
+            cnt += 1
 
-        self.layers.append(Dropout(1-self.placeholders['dropout'],
-                                   self.placeholders['is_training']))
-        self.layers.append(Dense(input_dim=FLAGS.hidden1*dim_s,
-                                 output_dim=self.output_dim,
-                                 placeholders=self.placeholders,
-                                 act=lambda x: x,
-                                 logging=self.logging,
-                                 name='dense2', norm=False))
+        for l in range(self.L):
+            self.layers.append(EMAAggregator(adjs[l], alpha,
+                                             self.history_ph[l], name='agg%d'%l))
+            self.layers.append(Dropout(1-self.placeholders['dropout'],
+                                       self.placeholders['is_training']))
+
+            name = 'dense%d' % (l+cnt)
+            dim  = self.agg0_dim if l==0 else FLAGS.hidden1
+            if l+1==self.L:
+                output_dim, norm, act = self.output_dim, False, lambda x: x
+            else:
+                output_dim, norm, act = FLAGS.hidden1, FLAGS.layer_norm, tf.nn.relu
+
+            self.layers.append(Dense(input_dim=dim*dim_s,
+                                     output_dim=output_dim,
+                                     placeholders=self.placeholders,
+                                     act=act,
+                                     logging=self.logging,
+                                     name=name, norm=norm))
+
 
     def _history(self):
        self.activations.append(self.inputs)
