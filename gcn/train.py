@@ -22,7 +22,8 @@ FLAGS = flags.FLAGS
 flags.DEFINE_string('dataset', 'cora', 'Dataset string.')  # 'cora', 'citeseer', 'pubmed'
 flags.DEFINE_string('model', 'graphsage', 'Model string.')  # 'graphsage', 'mlp'
 flags.DEFINE_float('learning_rate', 0.01, 'Initial learning rate.')
-flags.DEFINE_integer('epochs', 200, 'Number of epochs to train.')
+flags.DEFINE_integer('epochs', 200, 'Min number of epochs to train.')
+flags.DEFINE_integer('data', 0, 'Max amount of visited data')
 flags.DEFINE_integer('hidden1', 32, 'Number of units in hidden layer 1.')
 flags.DEFINE_float('dropout', 0.5, 'Dropout rate (1 - keep probability).')
 flags.DEFINE_float('weight_decay', 5e-4, 'Weight for L2 loss on embedding matrix.')
@@ -43,8 +44,8 @@ flags.DEFINE_float('alpha', 1.0, 'EMA coefficient')
 num_data, train_adj, full_adj, features, labels, train_d, val_d, test_d = \
         load_data(FLAGS.dataset)
 print('Features shape = {}'.format(features.shape))
-# TODO hack
-# features = features.todense()
+print('{} training data, {} validation data, {} testing data.'.format(
+    len(train_d), len(val_d), len(test_d)))
 
 multitask    = True if FLAGS.dataset=='ppi' else False
 sparse_input = isinstance(features, sp.csr.csr_matrix)
@@ -104,7 +105,7 @@ avg_acc  = Averager(1)
 def SGDTrain():
     amt_data = 0
     # Train model
-    for epoch in range(FLAGS.epochs):
+    for epoch in range(100000000):
         train_sch.shuffle()
     
         t = time()
@@ -131,7 +132,7 @@ def SGDTrain():
             if iter % 100 == 0:
                 print(avg_loss.mean(), avg_acc.mean(), tsch, 
                       feed_dict[placeholders['adj'][0]][0].shape, features.shape)
-    
+
         # Validation
         cost, acc, micro, macro, duration = evaluate(val_d)
         cost_val.append(cost)
@@ -149,6 +150,8 @@ def SGDTrain():
     
         if epoch > FLAGS.early_stopping and cost_val[-1] > np.mean(cost_val[-(FLAGS.early_stopping+1):-1]):
             print("Early stopping...")
+            break
+        if amt_data >= FLAGS.data and epoch > FLAGS.epochs:
             break
     
     print("Optimization Finished!")
