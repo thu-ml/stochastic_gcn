@@ -218,3 +218,10 @@ class Dropout(Layer):
             return layers.dropout(inputs, self.keep_prob, 
                                       is_training=self.is_training)
 
+
+class Normalize(Layer):
+    def __init__(self, **kwargs):
+        super(Normalize, self).__init__(**kwargs)
+
+    def _call(self, inputs):
+        return tf.nn.l2_normalize(inputs, 1)

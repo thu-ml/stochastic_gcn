@@ -548,17 +548,23 @@ class VRGCN(Model):
 
             name = 'dense%d' % (l+cnt)
             dim  = self.agg0_dim if l==0 else FLAGS.hidden1
-            if l+1==self.L:
-                output_dim, norm, act = self.output_dim, False, lambda x: x
-            else:
-                output_dim, norm, act = FLAGS.hidden1, FLAGS.layer_norm, tf.nn.relu
-
             self.layers.append(Dense(input_dim=dim*dim_s,
-                                     output_dim=output_dim,
+                                     output_dim=FLAGS.hidden1,
                                      placeholders=self.placeholders,
-                                     act=act,
+                                     act=tf.nn.relu,
                                      logging=self.logging,
-                                     name=name, norm=norm))
+                                     name=name, norm=FLAGS.layer_norm))
+        # GraphSAGE final layer
+        self.layers.append(Normalize())
+        self.layers.append(Dropout(1-self.placeholders['dropout'],
+                                   self.placeholders['is_training']))
+        self.layers.append(Dense(input_dim=FLAGS.hidden1*dim_s,
+                                 output_dim=self.output_dim,
+                                 placeholders=self.placeholders,
+                                 act=lambda x: x,
+                                 logging=self.logging,
+                                 name='dense_last', norm=False))
+
 
 
     def _history(self):
