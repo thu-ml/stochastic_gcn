@@ -29,6 +29,8 @@ flags.DEFINE_float('dropout', 0.5, 'Dropout rate (1 - keep probability).')
 flags.DEFINE_float('weight_decay', 5e-4, 'Weight for L2 loss on embedding matrix.')
 flags.DEFINE_integer('early_stopping', 10, 'Tolerance for early stopping (# of epochs).')
 flags.DEFINE_integer('batch_size', 1000, 'Minibatch size for SGD')
+flags.DEFINE_integer('test_batch_size', 1000, 'Testing batch size')
+flags.DEFINE_integer('test_degree', 20, 'Testing neighbour subsampling size')
 flags.DEFINE_integer('num_layers', 2, 'Number of layers')
 flags.DEFINE_integer('num_hops', 3, 'Number of neighbour hops')
 flags.DEFINE_integer('degree', 10000, 'Neighbour subsampling size')
@@ -89,15 +91,35 @@ sess = tf.Session()
 
 # Define model evaluation function
 def evaluate(data):
-    feed_dict = eval_sch.batch(data)
-    feed_dict[placeholders['is_training']] = False
-    feed_dict[placeholders['alpha']] = 1.0
-    model.get_data(feed_dict, False)
+    total_loss = 0
+    total_acc  = 0
+    total_pred = []
+    total_labs = []
+
     t_test = time()
-    los, acc, prd = sess.run([model.loss, model.accuracy, pred], 
-                             feed_dict=feed_dict)
-    micro, macro  = calc_f1(prd, feed_dict[placeholders['labels']], multitask)
-    return los, acc, micro, macro, (time()-t_test)
+    N = len(data)
+    for start in range(0, N, FLAGS.test_batch_size):
+        end = min(start+FLAGS.test_batch_size, N)
+        batch = data[start:end]
+        feed_dict = eval_sch.batch(batch)
+        feed_dict[placeholders['is_training']] = False
+        feed_dict[placeholders['alpha']] = 1.0
+        model.get_data(feed_dict, False)
+        los, acc, prd = sess.run([model.loss, model.accuracy, pred], 
+                                 feed_dict=feed_dict)
+        batch_size = prd.shape[0]
+        total_loss += los * batch_size
+        total_acc  += acc * batch_size
+        total_pred.append(prd)
+        total_labs.append(feed_dict[placeholders['labels']])
+
+    total_loss /= N
+    total_acc  /= N
+    total_pred = np.vstack(total_pred)
+    total_labs = np.vstack(total_labs)
+
+    micro, macro = calc_f1(total_pred, total_labs, multitask)
+    return total_loss, total_acc, micro, macro, (time()-t_test)
 
 
 # Init variables
