@@ -4,10 +4,10 @@ import os, sys
 # datasets   = ['cora']
 datasets   = ['reddit']
 # preprocess = ('True', 'False')
-preprocess = ['True']
+preprocess = ['False']
 # degrees    = (1, 2, 4, 10000)
 degrees    = (1, 20)
-alpha      = (1.0, 0.5, 0.25, 0.125)
+alpha      = (1.0, 0.5, 0.25, 0.125, -1)
 
 f = open('run.sh', 'w')
 for data in datasets:

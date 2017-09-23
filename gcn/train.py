@@ -6,7 +6,7 @@ import sys
 import tensorflow as tf
 
 from gcn.utils import *
-from gcn.models import GraphSAGE, NeighbourMLP, DoublyStochasticGCN
+from gcn.models import GraphSAGE, NeighbourMLP, DoublyStochasticGCN, VRGCN
 from scheduler import PyScheduler
 from tensorflow.contrib.opt import ScipyOptimizerInterface
 import scipy.sparse as sp
@@ -65,9 +65,14 @@ placeholders = {
 }
 
 if FLAGS.model == 'graphsage':
-    model = DoublyStochasticGCN(FLAGS.num_layers, FLAGS.preprocess,
-                                placeholders, features, 
-                                train_adj, full_adj, multitask=multitask)
+    if FLAGS.alpha == -1:
+        model = VRGCN(FLAGS.num_layers, FLAGS.preprocess,
+                                    placeholders, features, 
+                                    train_adj, full_adj, multitask=multitask)
+    else:
+        model = DoublyStochasticGCN(FLAGS.num_layers, FLAGS.preprocess,
+                                    placeholders, features, 
+                                    train_adj, full_adj, multitask=multitask)
 else:
     model = NeighbourMLP(FLAGS.num_layers, placeholders, features, 
                          train_adj, full_adj, multitask=multitask)

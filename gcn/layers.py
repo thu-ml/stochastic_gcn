@@ -172,6 +172,37 @@ class EMAAggregator(Layer):
             return tf.concat((a_self, a_neighbour), axis=1)
 
 
+class VRAggregator(Layer):
+    def __init__(self, adj, history, history_mean, is_training, **kwargs):
+        super(VRAggregator, self).__init__(**kwargs)
+
+        self.adj           = adj
+        self.history       = history
+        self.history_mean  = history_mean
+        self.is_training   = is_training
+
+    def _call(self, inputs):
+        ofield_size = self.adj.dense_shape[0]
+        a_self      = inputs[:tf.cast(ofield_size, tf.int32)]
+        a_neighbour_current = dot(self.adj, inputs, sparse=True)
+
+        def training():
+            a_neighbour_history = dot(self.adj, self.history, sparse=True)
+            a_neighbour         = a_neighbour_current - a_neighbour_history + self.history_mean
+            return a_neighbour
+
+        def testing():
+            a_neighbour         = a_neighbour_current
+            return a_neighbour
+
+        a_neighbour         = tf.cond(self.is_training, training, testing)
+        self.new_history    = inputs
+
+        if FLAGS.normalization == 'gcn':
+            return a_neighbour
+        else:
+            return tf.concat((a_self, a_neighbour), axis=1)
+
 
 class Dropout(Layer):
     def __init__(self, keep_prob, is_training, **kwargs):
