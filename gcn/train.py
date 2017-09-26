@@ -34,6 +34,7 @@ flags.DEFINE_integer('test_degree', 20, 'Testing neighbour subsampling size')
 flags.DEFINE_integer('num_layers', 2, 'Number of layers')
 flags.DEFINE_integer('num_hops', 3, 'Number of neighbour hops')
 flags.DEFINE_integer('degree', 10000, 'Neighbour subsampling size')
+flags.DEFINE_integer('num_reps', 1, 'Number of replicas')
 flags.DEFINE_float('beta1', 0.9, 'Beta1 for Adam')
 flags.DEFINE_float('beta2', 0.999, 'Beta2 for Adam')
 flags.DEFINE_string('normalization', 'gcn', 'gcn or graphsage')
@@ -43,8 +44,12 @@ flags.DEFINE_bool('preprocess', True,  'Preprocess first aggregation')
 flags.DEFINE_float('alpha', 1.0, 'EMA coefficient')
 
 # Load data
-num_data, train_adj, full_adj, features, labels, train_d, val_d, test_d = \
+old_num_data, train_adj, full_adj, features, labels, train_d, val_d, test_d = \
         load_data(FLAGS.dataset)
+
+num_data, adj, features, labels, train_d, val_d, test_d = \
+        data_augmentation(old_num_data, train_adj, full_adj, features, labels, train_d, val_d, test_d, FLAGS.num_reps)
+
 print('Features shape = {}'.format(features.shape))
 print('{} training data, {} validation data, {} testing data.'.format(
     len(train_d), len(val_d), len(test_d)))
@@ -72,9 +77,9 @@ if FLAGS.model == 'graphsage':
                                     placeholders, features, 
                                     train_adj, full_adj, multitask=multitask)
     else:
-        model = DoublyStochasticGCN(FLAGS.num_layers, FLAGS.preprocess,
+        model = DoublyStochasticGCN(old_num_data, FLAGS.num_layers, FLAGS.preprocess,
                                     placeholders, features, 
-                                    train_adj, full_adj, multitask=multitask)
+                                    adj, multitask=multitask)
 else:
     model = NeighbourMLP(FLAGS.num_layers, placeholders, features, 
                          train_adj, full_adj, multitask=multitask)
@@ -82,8 +87,8 @@ pred      = model.predict()
 
 train_degrees   = np.array([FLAGS.degree]*L, dtype=np.int32)
 test_degrees    = np.array([10000]*L, dtype=np.int32)
-train_sch = PyScheduler(train_adj, labels, L, train_degrees, placeholders, train_d)
-eval_sch  = PyScheduler(full_adj,  labels, L, test_degrees,  placeholders)
+train_sch = PyScheduler(adj, labels, L, train_degrees, placeholders, train_d)
+eval_sch  = PyScheduler(adj, labels, L, test_degrees,  placeholders)
 
 
 # Initialize session

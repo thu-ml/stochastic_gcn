@@ -328,6 +328,44 @@ def load_graphsage_data(prefix, normalize=True):
     return num_data, train_adj, full_adj, feats, labels, train_data, val_data, test_data
 
 
+def data_augmentation(num_data, train_adj, full_adj, feats, labels, train_data, val_data, test_data, n_rep=1):
+    feats  = np.tile(feats,  [n_rep+1, 1])
+    labels = np.tile(labels, [n_rep+1, 1])
+
+    train_adj  = train_adj.tocoo()
+    full_adj   = full_adj.tocoo()
+
+    i    = []
+    j    = []
+    data = []
+
+    def add_adj(adj, t):
+        i.append(adj.row + t*num_data)
+        j.append(adj.col + t*num_data)
+        data.append(adj.data)
+
+    for t in range(n_rep):
+        add_adj(train_adj, t)
+    add_adj(full_adj, n_rep)
+
+    adj = sp.csr_matrix((np.concatenate(data), (np.concatenate(i), np.concatenate(j))),
+                        shape=np.array(train_adj.shape)*(n_rep+1), dtype=train_adj.dtype)
+
+    new_train = []
+    for t in range(n_rep):
+        new_train.append(train_data + t*num_data)
+    train_data = np.concatenate(new_train)
+
+    val_data  += n_rep * num_data
+    test_data += n_rep * num_data
+    return num_data*(n_rep+1), adj, feats, labels, train_data, val_data, test_data
+
+
+def dropout(feats, keep_prob):
+    mask = np.random.rand(feats.shape[0], feats.shape[1]) < keep_prob
+    return feats * mask.astype(np.float32)
+
+
 def load_data(dataset):
     gcn_datasets = set(['cora', 'citeseer', 'pubmed', 'nell'])
     if dataset in gcn_datasets:
