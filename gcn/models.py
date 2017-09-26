@@ -455,12 +455,12 @@ class DoublyStochasticGCN(Model):
 
 
 class VRGCN(Model):
-    def __init__(self, L, preprocess, placeholders, 
-                 features, train_adj, test_adj,
+    def __init__(self, data_per_fold, L, preprocess, placeholders, 
+                 features, adj,
                  **kwargs):
         super(VRGCN, self).__init__(**kwargs)
 
-        self.adj            = train_adj
+        self.adj            = adj
         self.preprocess     = preprocess
         self.sparse_input   = not isinstance(features, np.ndarray)
         self.sparse_mm      = self.sparse_input
@@ -478,15 +478,21 @@ class VRGCN(Model):
         self.self_dim       = 0 if FLAGS.normalization=='gcn' else self.input_dim
 
         if self.preprocess:
-            self.self_features  = features[:,:self.self_dim]
-            self.train_features = train_adj.dot(features)
-            self.test_features  = test_adj.dot(features)
-            self.L              = L-1
+            self_features = features[:,:self.self_dim]
+            nbr_features  = adj.dot(features)
+            self.L        = L-1
         else:
-            self.self_features  = features
-            self.train_features = np.zeros((self.num_data, 0), dtype=np.float32)
-            self.test_features  = np.zeros((self.num_data, 0), dtype=np.float32)
-            self.L              = L
+            self_features = features
+            nbr_features  = np.zeros((self.num_data, 0), dtype=np.float32)
+            self.L        = L
+
+        if self.sparse_input:
+            self.features = sparse_to_tuple(sp.hstack((self_features, nbr_features)))
+            # TODO sparse dropout
+        else:
+            self.features = np.hstack((self_features, nbr_features))
+            num_training_data = data_per_fold*FLAGS.num_reps
+            self.features[:num_training_data] = dropout(self.features[:num_training_data], 1-FLAGS.dropout)
 
         self.agg0_dim       = FLAGS.hidden1 if self.preprocess else self.input_dim
         self.output_dim     = placeholders['labels'].get_shape().as_list()[1]
@@ -510,12 +516,7 @@ class VRGCN(Model):
 
     def get_data(self, feed_dict, is_training):
         ids        = feed_dict[self.placeholders['fields'][0]]
-        nbr_inputs = self.train_features[ids] if is_training else self.test_features[ids]
-        if self.sparse_input:
-            inputs = sparse_to_tuple(sp.hstack((self.self_features[ids], nbr_inputs)))
-        else:
-            inputs = np.hstack((self.self_features[ids], nbr_inputs))
-        feed_dict[self.inputs_ph] = inputs
+        feed_dict[self.inputs_ph] = self.features[ids]
 
         # Read history
         for l in range(self.L):
@@ -550,8 +551,8 @@ class VRGCN(Model):
         cnt    = 0
 
         if self.preprocess:
-            self.layers.append(Dropout(1-self.placeholders['dropout'],
-                                       self.placeholders['is_training']))
+            #self.layers.append(Dropout(1-self.placeholders['dropout'],
+            #                           self.placeholders['is_training']))
             self.layers.append(Dense(input_dim=self.input_dim*dim_s,
                                      output_dim=FLAGS.hidden1,
                                      placeholders=self.placeholders,
@@ -566,8 +567,8 @@ class VRGCN(Model):
                                              self.history_mean_ph[l], 
                                              self.placeholders['is_training'],
                                              name='agg%d'%l))
-            self.layers.append(Dropout(1-self.placeholders['dropout'],
-                                       self.placeholders['is_training']))
+            #self.layers.append(Dropout(1-self.placeholders['dropout'],
+            #                           self.placeholders['is_training']))
 
             name = 'dense%d' % (l+cnt)
             dim  = self.agg0_dim if l==0 else FLAGS.hidden1
@@ -579,8 +580,8 @@ class VRGCN(Model):
                                      name=name, norm=FLAGS.layer_norm))
         # GraphSAGE final layer
         self.layers.append(Normalize())
-        self.layers.append(Dropout(1-self.placeholders['dropout'],
-                                   self.placeholders['is_training']))
+        #self.layers.append(Dropout(1-self.placeholders['dropout'],
+        #                           self.placeholders['is_training']))
         self.layers.append(Dense(input_dim=FLAGS.hidden1,
                                  output_dim=self.output_dim,
                                  placeholders=self.placeholders,

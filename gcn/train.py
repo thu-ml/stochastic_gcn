@@ -73,9 +73,9 @@ placeholders = {
 
 if FLAGS.model == 'graphsage':
     if FLAGS.alpha == -1:
-        model = VRGCN(FLAGS.num_layers, FLAGS.preprocess,
+        model = VRGCN(old_num_data, FLAGS.num_layers, FLAGS.preprocess,
                                     placeholders, features, 
-                                    train_adj, full_adj, multitask=multitask)
+                                    adj, multitask=multitask)
     else:
         model = DoublyStochasticGCN(old_num_data, FLAGS.num_layers, FLAGS.preprocess,
                                     placeholders, features, 
