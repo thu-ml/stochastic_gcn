@@ -39,6 +39,7 @@ class Model(object):
         self.multitask = kwargs.get('multitask', False)
 
         self.history_ops = []
+        self.aggregators = []
 
     def _build(self):
         raise NotImplementedError
@@ -114,10 +115,6 @@ class Model(object):
         self._accuracy()
 
         self.opt_op = [self.optimizer.minimize(self.loss)]
-        with tf.control_dependencies(self.opt_op):
-            for layer in self.layers:
-                for ref, indices, updates in layer.post_updates:
-                    self.opt_op.append(tf.scatter_update(ref, indices, updates))
 
     def predict(self):
         if self.multitask:
@@ -141,100 +138,6 @@ class Model(object):
         print("Model restored from file: %s" % save_path)
 
 
-class GraphSAGE(Model):
-    def __init__(self, L, placeholders, features, train_adj=None, test_adj=None, **kwargs):
-        super(GraphSAGE, self).__init__(**kwargs)
-
-        self.L = L
-
-        self.sparse_input = not isinstance(features, np.ndarray)
-        self.build_input()
-        self.input_dim  = features.shape[1]
-        self.self_features = features
-
-        if train_adj is not None:
-            # Preprocess first aggregation
-            print('Preprocessing first aggregation')
-            start_t = time()
-
-            self.train_features = train_adj.dot(features)
-            self.test_features  = test_adj.dot(features)
-
-            self.preprocess   = True
-            print('Finished in {} seconds.'.format(time() - start_t))
-        else:
-            self.preprocess = False
-
-        self.num_data = features.shape[0]
-        self.output_dim = placeholders['labels'].get_shape().as_list()[1]
-        self.placeholders = placeholders
-
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate, 
-                                                beta1=FLAGS.beta1, beta2=FLAGS.beta2)
-
-        self.build()
-
-
-    def get_data(self, feed_dict, is_training):
-        if not self.preprocess:
-            ids = feed_dict[self.placeholders['fields'][0]]
-        else:
-            ids = feed_dict[self.placeholders['fields'][1]]
-
-        nbr_inputs = self.train_features[ids] if is_training else self.test_features[ids]
-        if self.sparse_input:
-            if not self.preprocess:
-                inputs = sparse_to_tuple(self.self_features[ids])
-            elif FLAGS.normalization=='gcn':
-                inputs = sparse_to_tuple(nbr_inputs)
-            else:
-                inputs = sparse_to_tuple(sp.hstack((self.self_features[ids], nbr_inputs)))
-        else:
-            nbr_inputs = self.train_features[ids] if is_training else self.test_features[ids]
-            if not self.preprocess:
-                inputs = self.self_features
-            elif FLAGS.normalization=='gcn':
-                inputs = nbr_inputs
-            else:
-                inputs = np.hstack((self.self_features[ids], nbr_inputs))
-
-        feed_dict[self.inputs] = inputs
-
-
-    def _build(self):
-        # Aggregate
-        fields = self.placeholders['fields']
-        adjs   = self.placeholders['adj']
-        dim_s  = 1 if FLAGS.normalization=='gcn' else 2
-
-        if not self.preprocess:
-            self.layers.append(PlainAggregator(adjs[0], fields[0], fields[1],
-                                               name='agg1'))
-
-        for l in range(1, self.L):
-            input_dim = self.input_dim if l==1 else FLAGS.hidden1
-            self.layers.append(Dropout(1-self.placeholders['dropout'],
-                                       self.placeholders['is_training']))
-            self.layers.append(Dense(input_dim=input_dim*dim_s,
-                                     output_dim=FLAGS.hidden1,
-                                     placeholders=self.placeholders,
-                                     act=tf.nn.relu,
-                                     logging=self.logging,
-                                     sparse_inputs=self.sparse_input if l==1 else False,
-                                     name='dense%d'%l, norm=FLAGS.layer_norm))
-            self.layers.append(PlainAggregator(adjs[l], fields[l], fields[l+1], 
-                                               name='agg%d'%(l+1)))
-
-        self.layers.append(Dropout(1-self.placeholders['dropout'],
-                                   self.placeholders['is_training']))
-        self.layers.append(Dense(input_dim=FLAGS.hidden1*dim_s,
-                                 output_dim=self.output_dim,
-                                 placeholders=self.placeholders,
-                                 act=lambda x: x,
-                                 logging=self.logging,
-                                 name='dense2', norm=False))
-
-# -----------------------------------------------
 class NeighbourMLP(Model):
     def __init__(self, L, placeholders, features, train_adj, test_adj, **kwargs):
         super(NeighbourMLP, self).__init__(**kwargs)
@@ -318,11 +221,11 @@ class NeighbourMLP(Model):
                                  name='dense%d'%(self.L-1)))
 
 
-class DoublyStochasticGCN(Model):
+class GCN(Model):
     def __init__(self, data_per_fold, L, preprocess, placeholders, 
                  features, adj, 
                  **kwargs):
-        super(DoublyStochasticGCN, self).__init__(**kwargs)
+        super(GCN, self).__init__(**kwargs)
 
         self.preprocess     = preprocess
         self.sparse_input   = not isinstance(features, np.ndarray)
@@ -361,19 +264,19 @@ class DoublyStochasticGCN(Model):
         self.output_dim     = placeholders['labels'].get_shape().as_list()[1]
         self.placeholders   = placeholders
 
-        # Create history after each aggregation
-        self.history_ph = []
-        self.history    = []
-        for i in range(self.L):
-            dims = self.agg0_dim if i==0 else FLAGS.hidden1
-            self.history_ph.append(tf.placeholder(tf.float32, name='agg{}_ph'.format(i)))
-            self.history.append(np.zeros((features.shape[0], dims), dtype=np.float32))
+        self._build_history()
+        self._build_aggregators()
 
         self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate, 
                                                 beta1=FLAGS.beta1, beta2=FLAGS.beta2)
-
         self.build()
 
+
+    def _build_history():
+        pass
+
+    def _build_aggregators():
+        pass
 
     def get_data(self, feed_dict, is_training):
         ids        = feed_dict[self.placeholders['fields'][0]]
@@ -421,8 +324,7 @@ class DoublyStochasticGCN(Model):
             cnt += 1
 
         for l in range(self.L):
-            self.layers.append(EMAAggregator(adjs[l], alpha,
-                                             self.history_ph[l], name='agg%d'%l))
+            self.layers.append(self.aggregators[l])
             #self.layers.append(Dropout(1-self.placeholders['dropout'],
             #                           self.placeholders['is_training']))
 
@@ -446,6 +348,59 @@ class DoublyStochasticGCN(Model):
                                  name='dense_last', norm=False))
 
 
+
+    def _history(self):
+       self.activations.append(self.inputs)
+       for layer in self.layers:
+           if hasattr(layer, 'new_history'):
+               self.history_ops.append(layer.new_history)
+
+
+class DoublyStochasticGCN(GCN):
+    def __init__(self, data_per_fold, L, preprocess, placeholders, 
+                 features, adj, 
+                 **kwargs):
+        super(GCN, self).__init__(**kwargs)
+
+    def _build_history():
+        # Create history after each aggregation
+        self.history_ph = []
+        self.history    = []
+        for i in range(self.L):
+            dims = self.agg0_dim if i==0 else FLAGS.hidden1
+            self.history_ph.append(tf.placeholder(tf.float32, name='agg{}_ph'.format(i)))
+            self.history.append(np.zeros((features.shape[0], dims), dtype=np.float32))
+
+    def get_data(self, feed_dict, is_training):
+        ids        = feed_dict[self.placeholders['fields'][0]]
+        feed_dict[self.inputs_ph] = self.features[ids]
+
+        # Read history
+        for l in range(self.L):
+            field = feed_dict[self.placeholders['fields'][l+1]]
+            feed_dict[self.history_ph[l]] = self.history[l][field]
+
+    def train_one_step(self, sess, feed_dict, is_training):
+        self.get_data(feed_dict, is_training)
+
+        # Run
+        outs, hist = sess.run([[self.opt_op, self.loss, self.accuracy], self.history_ops],
+                              feed_dict=feed_dict)
+
+        # Write history 
+        for l in range(self.L):
+            field = feed_dict[self.placeholders['fields'][l+1]]
+            self.history[l][field] = hist[l]
+
+        return outs
+
+    def _build_aggregators(self):
+        adjs   = self.placeholders['adj']
+        alpha  = self.placeholders['alpha']
+        for l in range(self.L):
+            self.aggregators.append(
+                    EMAAggregator(adjs[l], alpha, 
+                                  self.history_ph[l], name='agg%d'%l))
 
     def _history(self):
        self.activations.append(self.inputs)
