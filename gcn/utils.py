@@ -329,7 +329,10 @@ def load_graphsage_data(prefix, normalize=True):
 
 
 def data_augmentation(num_data, train_adj, full_adj, feats, labels, train_data, val_data, test_data, n_rep=1):
-    feats  = np.tile(feats,  [n_rep+1, 1])
+    if isinstance(feats, np.ndarray):
+        feats  = np.tile(feats,  [n_rep+1, 1])
+    else:
+        feats  = sp.vstack([feats] * (n_rep+1))
     labels = np.tile(labels, [n_rep+1, 1])
 
     train_adj  = train_adj.tocoo()
@@ -363,7 +366,7 @@ def data_augmentation(num_data, train_adj, full_adj, feats, labels, train_data, 
 
 def dropout(feats, keep_prob):
     mask = np.random.rand(feats.shape[0], feats.shape[1]) < keep_prob
-    return feats * mask.astype(np.float32)
+    return feats * mask.astype(np.float32) * (1.0 / keep_prob)
 
 
 def load_data(dataset):

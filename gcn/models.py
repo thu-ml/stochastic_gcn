@@ -253,7 +253,7 @@ class GCN(Model):
             self.L        = L
 
         if self.sparse_input:
-            self.features = sparse_to_tuple(sp.hstack((self_features, nbr_features)))
+            self.features = sp.hstack((self_features, nbr_features)).tocsr()
             # TODO sparse dropout
         else:
             self.features = np.hstack((self_features, nbr_features))
@@ -272,36 +272,11 @@ class GCN(Model):
         self.build()
 
 
-    def _build_history():
+    def _build_history(self):
         pass
 
-    def _build_aggregators():
+    def _build_aggregators(self):
         pass
-
-    def get_data(self, feed_dict, is_training):
-        ids        = feed_dict[self.placeholders['fields'][0]]
-        feed_dict[self.inputs_ph] = self.features[ids]
-
-        # Read history
-        for l in range(self.L):
-            field = feed_dict[self.placeholders['fields'][l+1]]
-            feed_dict[self.history_ph[l]] = self.history[l][field]
-
-
-    def train_one_step(self, sess, feed_dict, is_training):
-        self.get_data(feed_dict, is_training)
-
-        # Run
-        outs, hist = sess.run([[self.opt_op, self.loss, self.accuracy], self.history_ops],
-                              feed_dict=feed_dict)
-
-        # Write history 
-        for l in range(self.L):
-            field = feed_dict[self.placeholders['fields'][l+1]]
-            self.history[l][field] = hist[l]
-
-        return outs
-
 
     def _build(self):
         # Aggregate
@@ -312,8 +287,8 @@ class GCN(Model):
         cnt    = 0
 
         if self.preprocess:
-            # self.layers.append(Dropout(1-self.placeholders['dropout'],
-            #                            self.placeholders['is_training']))
+            #self.layers.append(Dropout(1-self.placeholders['dropout'],
+            #                           self.placeholders['is_training']))
             self.layers.append(Dense(input_dim=self.input_dim*dim_s,
                                      output_dim=FLAGS.hidden1,
                                      placeholders=self.placeholders,
@@ -337,7 +312,7 @@ class GCN(Model):
                                      logging=self.logging,
                                      name=name, norm=FLAGS.layer_norm))
         # GraphSAGE final layer
-        self.layers.append(Normalize())
+        #self.layers.append(Normalize())
         #self.layers.append(Dropout(1-self.placeholders['dropout'],
         #                           self.placeholders['is_training']))
         self.layers.append(Dense(input_dim=FLAGS.hidden1,
@@ -360,20 +335,24 @@ class DoublyStochasticGCN(GCN):
     def __init__(self, data_per_fold, L, preprocess, placeholders, 
                  features, adj, 
                  **kwargs):
-        super(GCN, self).__init__(**kwargs)
+        super(DoublyStochasticGCN, self).__init__(data_per_fold, 
+                L, preprocess, placeholders, features, adj, **kwargs)
 
-    def _build_history():
+    def _build_history(self):
         # Create history after each aggregation
         self.history_ph = []
         self.history    = []
         for i in range(self.L):
             dims = self.agg0_dim if i==0 else FLAGS.hidden1
             self.history_ph.append(tf.placeholder(tf.float32, name='agg{}_ph'.format(i)))
-            self.history.append(np.zeros((features.shape[0], dims), dtype=np.float32))
+            self.history.append(np.zeros((self.num_data, dims), dtype=np.float32))
 
     def get_data(self, feed_dict, is_training):
-        ids        = feed_dict[self.placeholders['fields'][0]]
-        feed_dict[self.inputs_ph] = self.features[ids]
+        ids = feed_dict[self.placeholders['fields'][0]]
+        if self.sparse_input:
+            feed_dict[self.inputs_ph] = sparse_to_tuple(self.features[ids])
+        else:
+            feed_dict[self.inputs_ph] = self.features[ids]
 
         # Read history
         for l in range(self.L):
@@ -506,8 +485,8 @@ class VRGCN(Model):
         cnt    = 0
 
         if self.preprocess:
-            #self.layers.append(Dropout(1-self.placeholders['dropout'],
-            #                           self.placeholders['is_training']))
+            self.layers.append(Dropout(1-self.placeholders['dropout'],
+                                       self.placeholders['is_training']))
             self.layers.append(Dense(input_dim=self.input_dim*dim_s,
                                      output_dim=FLAGS.hidden1,
                                      placeholders=self.placeholders,
@@ -522,8 +501,10 @@ class VRGCN(Model):
                                              self.history_mean_ph[l], 
                                              self.placeholders['is_training'],
                                              name='agg%d'%l))
-            #self.layers.append(Dropout(1-self.placeholders['dropout'],
-            #                           self.placeholders['is_training']))
+            if l+1==self.L:
+                break
+            self.layers.append(Dropout(1-self.placeholders['dropout'],
+                                       self.placeholders['is_training']))
 
             name = 'dense%d' % (l+cnt)
             dim  = self.agg0_dim if l==0 else FLAGS.hidden1
@@ -534,9 +515,9 @@ class VRGCN(Model):
                                      logging=self.logging,
                                      name=name, norm=FLAGS.layer_norm))
         # GraphSAGE final layer
-        self.layers.append(Normalize())
-        #self.layers.append(Dropout(1-self.placeholders['dropout'],
-        #                           self.placeholders['is_training']))
+        #self.layers.append(Normalize())
+        self.layers.append(Dropout(1-self.placeholders['dropout'],
+                                   self.placeholders['is_training']))
         self.layers.append(Dense(input_dim=FLAGS.hidden1,
                                  output_dim=self.output_dim,
                                  placeholders=self.placeholders,
