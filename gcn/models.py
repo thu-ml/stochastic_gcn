@@ -3,7 +3,7 @@ from gcn.metrics import *
 from gcn.inits import *
 from time import time
 import scipy.sparse as sp
-from gcn.utils import sparse_to_tuple, dropout
+from gcn.utils import sparse_to_tuple, dropout, sparse_dropout
 import numpy as np
 
 flags = tf.app.flags
@@ -255,11 +255,14 @@ class GCN(Model):
 
         if self.sparse_input:
             self.features = sp.hstack((self_features, nbr_features)).tocsr()
-            # TODO sparse dropout
+            if FLAGS.det_dropout:
+                num_training_data = data_per_fold*FLAGS.num_reps
+                self.features[:num_training_data] = sparse_dropout(self.features[:num_training_data], 1-FLAGS.dropout)
         else:
             self.features = np.hstack((self_features, nbr_features))
-            num_training_data = data_per_fold*FLAGS.num_reps
-            self.features[:num_training_data] = dropout(self.features[:num_training_data], 1-FLAGS.dropout)
+            if FLAGS.det_dropout:
+                num_training_data = data_per_fold*FLAGS.num_reps
+                self.features[:num_training_data] = dropout(self.features[:num_training_data], 1-FLAGS.dropout)
 
         self.agg0_dim       = FLAGS.hidden1 if self.preprocess else self.input_dim
         self.output_dim     = placeholders['labels'].get_shape().as_list()[1]
@@ -288,8 +291,9 @@ class GCN(Model):
         cnt    = 0
 
         if self.preprocess:
-            #self.layers.append(Dropout(1-self.placeholders['dropout'],
-            #                           self.placeholders['is_training']))
+            if not FLAGS.det_dropout:
+                self.layers.append(Dropout(1-self.placeholders['dropout'],
+                                           self.placeholders['is_training']))
             self.layers.append(Dense(input_dim=self.input_dim*dim_s,
                                      output_dim=FLAGS.hidden1,
                                      placeholders=self.placeholders,
@@ -301,8 +305,11 @@ class GCN(Model):
 
         for l in range(self.L):
             self.layers.append(self.aggregators[l])
-            #self.layers.append(Dropout(1-self.placeholders['dropout'],
-            #                           self.placeholders['is_training']))
+            if not FLAGS.det_dropout:
+                self.layers.append(Dropout(1-self.placeholders['dropout'],
+                                           self.placeholders['is_training']))
+            if l+1==self.L:
+                break
 
             name = 'dense%d' % (l+cnt)
             dim  = self.agg0_dim if l==0 else FLAGS.hidden1
@@ -314,8 +321,9 @@ class GCN(Model):
                                      name=name, norm=FLAGS.layer_norm))
         # GraphSAGE final layer
         #self.layers.append(Normalize())
-        #self.layers.append(Dropout(1-self.placeholders['dropout'],
-        #                           self.placeholders['is_training']))
+        if not FLAGS.det_dropout:
+            self.layers.append(Dropout(1-self.placeholders['dropout'],
+                                       self.placeholders['is_training']))
         self.layers.append(Dense(input_dim=FLAGS.hidden1,
                                  output_dim=self.output_dim,
                                  placeholders=self.placeholders,

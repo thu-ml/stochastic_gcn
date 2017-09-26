@@ -369,6 +369,15 @@ def dropout(feats, keep_prob):
     return feats * mask.astype(np.float32) * (1.0 / keep_prob)
 
 
+def sparse_dropout(feats, keep_prob):
+    feats = feats.tocoo()
+    mask  = np.random.rand(feats.data.shape[0]) < keep_prob
+    feats = sp.csr_matrix((feats.data[mask], (feats.row[mask], feats.col[mask])),
+                          shape=feats.shape, dtype=feats.dtype) 
+    feats = feats * (1.0 / keep_prob)
+    return feats
+
+
 def load_data(dataset):
     gcn_datasets = set(['cora', 'citeseer', 'pubmed', 'nell'])
     if dataset in gcn_datasets:
