@@ -244,7 +244,7 @@ class GCN(Model):
                 input_dim  = dim*dim_s if l2==0 else FLAGS.hidden1
                 last_layer = l2+1==FLAGS.num_fc_layers and l+1==self.L
                 output_dim = self.output_dim if last_layer else FLAGS.hidden1
-                act        = lambda x: x     if last_layer else tf.nn.relu 
+                act        = (lambda x: x)   if last_layer else tf.nn.relu 
                 layer_norm = False           if last_layer else FLAGS.layer_norm
 
                 self.layers.append(Dense(input_dim=input_dim,
