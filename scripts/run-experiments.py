@@ -1,28 +1,29 @@
 import os, sys
 
-# datasets   = ('cora', 'citeseer', 'pubmed')
-# datasets   = ['cora']
-datasets   = ['reddit']
-# preprocess = ('True', 'False')
-preprocess = ['False']
-# degrees    = (1, 2, 4, 10000)
-degrees    = (1, 20)
-alpha      = (1.0, 0.5, 0.25, 0.125, -1)
+#datasets    = ['cora', 'citeseer', 'pubmed']
+datasets    = ['ppi']
+preprocess  = ['True', 'False']
+det_dropout = ['True', 'False']
+deg_alpha   = [(20, 1), (1, 1), (1, -1)]
 
 f = open('run.sh', 'w')
 for data in datasets:
     for pp in preprocess:
-        for deg in degrees:
-            for a in alpha:
-                log_file = 'logs/{}_pp{}_deg{}_a{}.log'.format(data, pp, deg, a)
+        for dropout in det_dropout:
+            for deg, a in deg_alpha:
+                log_file = 'logs/{}_pp{}_dropout{}_deg{}_a{}.log'.format(data, pp, dropout, deg, a)
+                dropout_str = ''
+                if det_dropout:
+                    dropout_str += '--num_reps 4 --det_dropout'
+
 #                command = \
-#'stdbuf -o 0 python ../gcn/train.py --dropout 0 \
+#'stdbuf -o 0 python ../gcn/train.py \
 #--early_stopping=1000000 --data=300000 --epochs=400 \
-#--dataset={} --preprocess={} --degree={} --alpha={} | tee {}'.format(
-#        data, pp, deg, a, log_file)
+#--dataset={} --preprocess={} --degree={} --alpha={} {} | tee {}'.format(
+#        data, pp, deg, a, dropout_str, log_file)
                 command = \
-'stdbuf -o 0 python ../gcn/train.py --dropout 0 --weight_decay 0 --hidden1 128 --normalization graphsage --learning_rate 3e-4 \
---early_stopping=10000000 --epochs=20 --data=10000000 \
---dataset={} --preprocess={} --degree={} --alpha={} | tee {}'.format(
-        data, pp, deg, a, log_file)
+'stdbuf -o 0 python ../gcn/train.py --normalization graphsage --weight_decay 0 --dropout 0.2 --layer_norm --batch_size 512 --hidden1 512 --num_fc_layers 2 \
+--early_stopping=1000000 --data=40000000 --epochs=200 \
+--dataset={} --preprocess={} --degree={} --alpha={} {} | tee {}'.format(
+        data, pp, deg, a, dropout_str, log_file)
                 f.write(command+'\n')

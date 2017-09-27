@@ -100,14 +100,15 @@ class Model(object):
         self.sparse_mm      = self.sparse_input
         self.inputs_ph      = self.get_ph('input')
 
+        self.inputs         = self.inputs_ph
+        if self.sparse_input:
+            self.inputs     = tf.sparse_reorder(self.inputs)
         if not self.preprocess and self.sparse_input:
             print('Warning: we do not support sparse input without pre-processing. Converting to dense...')
-            self.inputs     = tf.sparse_to_dense(self.inputs_ph.indices, 
-                                                 self.inputs_ph.dense_shape,
-                                                 self.inputs_ph.values)
+            self.inputs     = tf.sparse_to_dense(self.inputs.indices, 
+                                                 self.inputs.dense_shape,
+                                                 self.inputs.values)
             self.sparse_mm  = False
-        else:
-            self.inputs     = self.inputs_ph
 
         self.num_data       = self.features.shape[0]
 
