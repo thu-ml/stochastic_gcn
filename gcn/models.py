@@ -221,50 +221,37 @@ class GCN(Model):
             if not FLAGS.det_dropout:
                 self.layers.append(Dropout(1-self.placeholders['dropout'],
                                            self.placeholders['is_training']))
-            self.layers.append(Dense(input_dim=self.input_dim*dim_s,
-                                     output_dim=FLAGS.hidden1,
-                                     placeholders=self.placeholders,
-                                     act=tf.nn.relu,
-                                     logging=self.logging,
-                                     sparse_inputs=self.sparse_mm,
-                                     name='dense0', norm=FLAGS.layer_norm))
-            cnt += 1
+            for l in range(FLAGS.num_fc_layers):
+                input_dim = self.input_dim*dim_s if l==0 else FLAGS.hidden1
+                sparse_inputs = self.sparse_mm if l==0 else False
+                self.layers.append(Dense(input_dim=input_dim,
+                                         output_dim=FLAGS.hidden1,
+                                         placeholders=self.placeholders,
+                                         act=tf.nn.relu,
+                                         logging=self.logging,
+                                         sparse_inputs=sparse_inputs,
+                                         name='dense%d'%cnt, norm=FLAGS.layer_norm))
+                cnt += 1
 
         for l in range(self.L):
             self.layers.append(self.aggregators[l])
             if not FLAGS.det_dropout:
                 self.layers.append(Dropout(1-self.placeholders['dropout'],
                                            self.placeholders['is_training']))
-            #if l+1==self.L:
-            #    break
+            for l2 in range(FLAGS.num_fc_layers):
+                dim        = self.agg0_dim if l==0 else FLAGS.hidden1
+                input_dim  = dim*dim_s if l2==0 else FLAGS.hidden1
+                last_layer = l2+1==FLAGS.num_fc_layers and l+1==self.L
+                output_dim = self.output_dim if last_layer else FLAGS.hidden1
+                act        = lambda x: x     if last_layer else tf.nn.relu 
+                layer_norm = False           if last_layer else FLAGS.layer_norm
 
-            name = 'dense%d' % (l+cnt)
-            dim  = self.agg0_dim if l==0 else FLAGS.hidden1
-            self.layers.append(Dense(input_dim=dim*dim_s,
-                                     output_dim=FLAGS.hidden1,
-                                     placeholders=self.placeholders,
-                                     act=tf.nn.relu,
-                                     logging=self.logging,
-                                     name=name, norm=FLAGS.layer_norm))
-        # GraphSAGE final layer
-        #self.layers.append(Normalize())
-        if not FLAGS.det_dropout:
-            self.layers.append(Dropout(1-self.placeholders['dropout'],
-                                       self.placeholders['is_training']))
-        self.layers.append(Dense(input_dim=FLAGS.hidden1,
-                                 output_dim=self.output_dim,
-                                 placeholders=self.placeholders,
-                                 act=lambda x: x,
-                                 logging=self.logging,
-                                 name='dense_last', norm=False))
-
-
-
-    def _history(self):
-       self.activations.append(self.inputs)
-       for layer in self.layers:
-           if hasattr(layer, 'new_history'):
-               self.history_ops.append(layer.new_history)
-
+                self.layers.append(Dense(input_dim=input_dim,
+                                         output_dim=output_dim,
+                                         placeholders=self.placeholders,
+                                         act=act,
+                                         logging=self.logging,
+                                         name='dense%d'%cnt, norm=layer_norm))
+                cnt += 1
 
 
