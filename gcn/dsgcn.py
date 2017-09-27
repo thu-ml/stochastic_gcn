@@ -61,9 +61,3 @@ class DoublyStochasticGCN(GCN):
                     EMAAggregator(adjs[l], alpha, 
                                   self.history_ph[l], name='agg%d'%l))
 
-    def _history(self):
-       self.activations.append(self.inputs)
-       for layer in self.layers:
-           if hasattr(layer, 'new_history'):
-               self.history_ops.append(layer.new_history)
-

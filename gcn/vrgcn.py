@@ -66,9 +66,3 @@ class VRGCN(GCN):
                                              self.placeholders['is_training'],
                                              name='agg%d'%l))
 
-    def _history(self):
-       self.activations.append(self.inputs)
-       for layer in self.layers:
-           if hasattr(layer, 'new_history'):
-               self.history_ops.append(layer.new_history)
-
