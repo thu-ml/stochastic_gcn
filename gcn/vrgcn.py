@@ -48,8 +48,10 @@ class VRGCN(GCN):
         self.get_data(feed_dict, is_training)
 
         # Run
-        outs, hist = sess.run([[self.opt_op, self.loss, self.accuracy], self.history_ops],
+        outs, hist, values = sess.run([[self.opt_op, self.loss, self.accuracy], 
+                                       self.history_ops, self.average_get_ops],
                               feed_dict=feed_dict)
+        self.average_model(values)
 
         # Write history
         for l in range(self.L):

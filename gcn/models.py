@@ -95,6 +95,26 @@ class Model(object):
             return tf.placeholder(tf.float32, name=name)
 
 
+    def average_model(self, values):
+        if FLAGS.polyak_decay > 0:
+            for i in range(len(values)):
+                self.average_values[i] = self.average_values[i]*FLAGS.polyak_decay + \
+                                         values[i]*(1-FLAGS.polyak_decay)
+
+
+    def backup_model(self, sess):
+        if FLAGS.polyak_decay > 0:
+            self.bak_values = sess.run(self.average_get_ops)
+            sess.run(self.average_update_ops,
+                     feed_dict={ph: v for ph, v in zip(self.average_phs, self.average_values)})
+
+
+    def restore_model(self, sess):
+        if FLAGS.polyak_decay > 0:
+            sess.run(self.average_update_ops, 
+                     feed_dict={ph: v for ph, v in zip(self.average_phs, self.bak_values)})
+            
+
     def build(self):
         self.sparse_input   = not isinstance(self.features, np.ndarray)
         self.sparse_mm      = self.sparse_input
@@ -124,11 +144,26 @@ class Model(object):
             self._build()
 
         # Build sequential layer model
+        self.average_get_ops    = []
+        self.average_phs        = []
+        self.average_update_ops = []
+        self.average_values     = []
+
         self.activations.append(self.inputs)
         for layer in self.layers:
             hidden = layer(self.activations[-1])
             print('{} shape = {}'.format(layer.name, hidden.get_shape()))
             self.activations.append(hidden)
+
+            # Polyak-ops
+            if FLAGS.polyak_decay > 0:
+                for var in layer.vars.values():
+                    print(var.name, var.get_shape())
+                    self.average_get_ops.append(var)
+                    self.average_phs.append(tf.placeholder(tf.float32))
+                    self.average_update_ops.append(tf.assign(var, self.average_phs[-1]))
+                    self.average_values.append(np.zeros(var.get_shape(), np.float32))
+
         self.outputs = self.activations[-1]
 
         with tf.variable_scope(self.name):

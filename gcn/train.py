@@ -44,6 +44,7 @@ flags.DEFINE_float('beta2', 0.999, 'Beta2 for Adam')
 flags.DEFINE_string('normalization', 'gcn', 'gcn or graphsage')
 flags.DEFINE_bool('layer_norm', False, 'Layer normalization')
 flags.DEFINE_bool('preprocess', True,  'Preprocess first aggregation')
+flags.DEFINE_float('polyak_decay', 0, 'Decay for model averaging')
 
 flags.DEFINE_float('alpha', 1.0, 'EMA coefficient')
 
@@ -107,12 +108,17 @@ def evaluate(data):
 
     t_test = time()
     N = len(data)
+    model.backup_model(sess)
     for start in range(0, N, FLAGS.test_batch_size):
         end = min(start+FLAGS.test_batch_size, N)
         batch = data[start:end]
         feed_dict = eval_sch.batch(batch)
         feed_dict[placeholders['is_training']] = False
         feed_dict[placeholders['alpha']] = 1.0
+
+        #for l in range(2):
+        #    print(feed_dict[placeholders['adj'][l]][0].shape)
+
         model.get_data(feed_dict, False)
         los, acc, prd = sess.run([model.loss, model.accuracy, pred], 
                                  feed_dict=feed_dict)
@@ -121,6 +127,7 @@ def evaluate(data):
         total_acc  += acc * batch_size
         total_pred.append(prd)
         total_labs.append(feed_dict[placeholders['labels']])
+    model.restore_model(sess)
 
     total_loss /= N
     total_acc  /= N
