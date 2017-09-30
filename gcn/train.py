@@ -45,6 +45,7 @@ flags.DEFINE_string('normalization', 'gcn', 'gcn or graphsage')
 flags.DEFINE_bool('layer_norm', False, 'Layer normalization')
 flags.DEFINE_bool('preprocess', True,  'Preprocess first aggregation')
 flags.DEFINE_float('polyak_decay', 0, 'Decay for model averaging')
+flags.DEFINE_bool('load', False, 'Load the model')
 
 flags.DEFINE_float('alpha', 1.0, 'EMA coefficient')
 
@@ -109,6 +110,7 @@ def evaluate(data):
     t_test = time()
     N = len(data)
     model.backup_model(sess)
+
     for start in range(0, N, FLAGS.test_batch_size):
         end = min(start+FLAGS.test_batch_size, N)
         batch = data[start:end]
@@ -142,6 +144,11 @@ avg_acc  = Averager(1)
 
 def SGDTrain():
     amt_data = 0
+
+    if FLAGS.load:
+        model.load(sess)
+        return 
+
     # Train model
     for epoch in range(100000000):
         train_sch.shuffle()
@@ -193,7 +200,10 @@ def SGDTrain():
             break
     
     print("Optimization Finished!")
+    model.save(sess)
     
+
+def Test():
     # Testing
     test_cost, test_acc, micro, macro, test_duration = evaluate(test_d)
     print("Test set results:", "cost=", "{:.5f}".format(test_cost),
@@ -240,3 +250,4 @@ def LBFGSTrain():
 
 # LBFGSTrain()
 SGDTrain()
+Test()

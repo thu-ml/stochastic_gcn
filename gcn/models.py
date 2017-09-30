@@ -174,9 +174,11 @@ class Model(object):
                     self.history_ops.append(layer.new_history)
 
         # Store model variables for easy access
-        variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=self.name)
+        variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
         self.vars = {var.name: var for var in variables}
-        print('Model variables {}'.format(self.vars))
+        print('Model variables')
+        for k in self.vars.keys():
+            print(k)
 
         # Build metrics
         self._loss()
