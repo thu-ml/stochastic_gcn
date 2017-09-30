@@ -13,10 +13,10 @@ FLAGS = flags.FLAGS
 
 class VRGCN(GCN):
     def __init__(self, data_per_fold, L, preprocess, placeholders, 
-                 features, adj,
+                 features, features1, adj,
                  **kwargs):
         super(VRGCN, self).__init__(data_per_fold, L, preprocess, placeholders, 
-                                    features, adj, **kwargs)
+                                    features, features1, adj, **kwargs)
 
     def _build_history(self):
         # Create history after each aggregation

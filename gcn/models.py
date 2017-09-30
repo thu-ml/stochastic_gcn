@@ -176,6 +176,7 @@ class Model(object):
         # Store model variables for easy access
         variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=self.name)
         self.vars = {var.name: var for var in variables}
+        print('Model variables {}'.format(self.vars))
 
         # Build metrics
         self._loss()
@@ -207,7 +208,7 @@ class Model(object):
 
 class GCN(Model):
     def __init__(self, data_per_fold, L, preprocess, placeholders, 
-                 features, adj, 
+                 features, features1, adj, 
                  **kwargs):
         super(GCN, self).__init__(**kwargs)
 
@@ -216,6 +217,7 @@ class GCN(Model):
         self.preprocess    = preprocess
         self.placeholders  = placeholders
         self.features      = features
+        self.features1     = features1
         self.adj           = adj
 
         self.build()
@@ -226,7 +228,8 @@ class GCN(Model):
 
         if self.preprocess:
             self_features = self.features[:,:self_dim]
-            nbr_features  = self.adj.dot(self.features)
+            #nbr_features  = self.adj.dot(self.features)
+            nbr_features  = self.features1
             self.L       -= 1
         else:
             self_features = self.features

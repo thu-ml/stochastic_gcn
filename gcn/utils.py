@@ -221,6 +221,7 @@ def load_graphsage_data(prefix, normalize=True):
         data = np.load(prefix + '.npz')
         num_data     = data['num_data']
         feats        = data['feats']
+        feats1       = data['feats1']
         labels       = data['labels']
         train_data   = data['train_data']
         val_data     = data['val_data']
@@ -314,7 +315,7 @@ def load_graphsage_data(prefix, normalize=True):
         train_adj = _get_adj(train_v, train_coords)
         full_adj  = _get_adj(full_v,  full_coords)
 
-        num_data, adj, feats, labels, train_data, val_data, test_data = \
+        num_data, adj, feats, feats1, labels, train_data, val_data, test_data = \
                 data_augmentation(num_data, train_adj, full_adj, feats, labels, 
                                   train_data, val_data, test_data)
     
@@ -323,11 +324,11 @@ def load_graphsage_data(prefix, normalize=True):
             np.savez(fwrite, num_data=num_data, 
                              adj_data=adj.data, adj_indices=adj.indices,
                              adj_indptr=adj.indptr, adj_shape=adj.shape,
-                             feats=feats, labels=labels,
+                             feats=feats, feats1=feats1, labels=labels,
                              train_data=train_data, val_data=val_data, 
                              test_data=test_data)
 
-    return num_data, adj, feats, labels, train_data, val_data, test_data
+    return num_data, adj, feats, feats1, labels, train_data, val_data, test_data
 
 
 def data_augmentation(num_data, train_adj, full_adj, feats, labels, train_data, val_data, test_data, n_rep=1):
@@ -363,7 +364,7 @@ def data_augmentation(num_data, train_adj, full_adj, feats, labels, train_data, 
 
     val_data  += n_rep * num_data
     test_data += n_rep * num_data
-    return num_data*(n_rep+1), adj, feats, labels, train_data, val_data, test_data
+    return num_data*(n_rep+1), adj, feats, adj.dot(feats), labels, train_data, val_data, test_data
 
 
 def dropout(feats, keep_prob):

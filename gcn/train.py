@@ -49,7 +49,7 @@ flags.DEFINE_float('polyak_decay', 0, 'Decay for model averaging')
 flags.DEFINE_float('alpha', 1.0, 'EMA coefficient')
 
 # Load data
-num_data, adj, features, labels, train_d, val_d, test_d = \
+num_data, adj, features, features1, labels, train_d, val_d, test_d = \
         load_data(FLAGS.dataset)
 old_num_data = num_data / (FLAGS.num_reps+1)
 
@@ -79,11 +79,11 @@ print('Building model...')
 if FLAGS.model == 'graphsage':
     if FLAGS.alpha == -1:
         model = VRGCN(old_num_data, FLAGS.num_layers, FLAGS.preprocess,
-                                    placeholders, features, 
+                                    placeholders, features, features1,
                                     adj, multitask=multitask)
     else:
         model = DoublyStochasticGCN(old_num_data, FLAGS.num_layers, FLAGS.preprocess,
-                                    placeholders, features, 
+                                    placeholders, features, features1,
                                     adj, multitask=multitask)
 else:
     model = NeighbourMLP(FLAGS.num_layers, placeholders, features, 
@@ -172,7 +172,7 @@ def SGDTrain():
         # Validation
         cost, acc, micro, macro, duration = evaluate(val_d)
         cost_val.append(cost)
-        test_cost, test_acc, test_micro, test_macro, test_duration = evaluate(test_d)
+        #test_cost, test_acc, test_micro, test_macro, test_duration = evaluate(test_d)
     
         # Print results
         print("Epoch:", '%04d' % (epoch + 1), 
