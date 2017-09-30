@@ -91,7 +91,7 @@ else:
 pred      = model.predict()
 
 train_degrees   = np.array([FLAGS.degree]*L, dtype=np.int32)
-test_degrees    = np.array([10000]*L, dtype=np.int32)
+test_degrees    = np.array([FLAGS.test_degree]*L, dtype=np.int32)
 train_sch = PyScheduler(adj, labels, L, train_degrees, placeholders, train_d)
 eval_sch  = PyScheduler(adj, labels, L, test_degrees,  placeholders)
 

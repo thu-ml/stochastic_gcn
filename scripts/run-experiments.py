@@ -5,7 +5,7 @@ preprocess  = ['True', 'False']
 #det_dropout = ['True', 'False']
 #det_dropout = ['False']
 #deg_alpha   = [(20, 1), (1, 1), (1, -1)]
-det_dropout = ['True']
+det_dropout = ['False']
 deg_alpha   = [(20, 1), (1, 1), (1, -1)]
 
 f = open('run.sh', 'w')
@@ -21,7 +21,7 @@ for data in datasets:
                 if data!='ppi':
                     command = \
 'stdbuf -o 0 python ../gcn/train.py \
---early_stopping=1000000 --data=300000 --epochs=400 \
+--early_stopping=1000000 --data=300000 --epochs=400 --polyak=0.9 \
 --dataset={} --preprocess={} --degree={} --alpha={} {} | tee {}'.format(
             data, pp, deg, a, dropout_str, log_file)
                 else:
