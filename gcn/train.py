@@ -74,6 +74,8 @@ placeholders = {
     'alpha': tf.placeholder(tf.float32, shape=(), name='alpha')
 }
 
+t = time()
+print('Building model...')
 if FLAGS.model == 'graphsage':
     if FLAGS.alpha == -1:
         model = VRGCN(old_num_data, FLAGS.num_layers, FLAGS.preprocess,
@@ -87,6 +89,7 @@ else:
     model = NeighbourMLP(FLAGS.num_layers, placeholders, features, 
                          train_adj, full_adj, multitask=multitask)
 pred      = model.predict()
+print('Finised in {} seconds'.format(time()-t))
 
 train_degrees   = np.array([FLAGS.degree]*L, dtype=np.int32)
 test_degrees    = np.array([FLAGS.test_degree]*L, dtype=np.int32)
@@ -186,6 +189,7 @@ def SGDTrain():
               "val_acc=", "{:.5f}".format(acc), 
               "mi F1={:.5f} ma F1={:.5f} ".format(micro, macro),
               "time=", "{:.5f}".format(time() - t),
+              "ttime=", "{:.5f}".format(duration),
               "(sch {:.5f} s)".format(tsch),
               "data = {}".format(amt_data))
     
