@@ -220,15 +220,13 @@ def load_graphsage_data(prefix, normalize=True):
         print('Found preprocessed dataset {}, loading...'.format(npz_file))
         data = np.load(prefix + '.npz')
         num_data     = data['num_data']
-        full_v       = data['full_v']
-        full_coords  = data['full_coords']
-        train_v      = data['train_v']
-        train_coords = data['train_coords']
         feats        = data['feats']
         labels       = data['labels']
         train_data   = data['train_data']
         val_data     = data['val_data']
         test_data    = data['test_data']
+        adj = sp.csr_matrix((data['adj_data'], data['adj_indices'], data['adj_indptr']), 
+                            shape=data['adj_shape'])
         print('Finished in {} seconds.'.format(time() - start_time))
     else:
         print('Loading data...')
@@ -307,25 +305,29 @@ def load_graphsage_data(prefix, normalize=True):
 
         train_v, train_coords = _normalize_adj(train_edges)
         full_v,  full_coords  = _normalize_adj(edges)
+
+        def _get_adj(data, coords):
+            adj = sp.csr_matrix((data, (coords[0,:], coords[1,:])),
+                                shape=(num_data, num_data))
+            return adj
+        
+        train_adj = _get_adj(train_v, train_coords)
+        full_adj  = _get_adj(full_v,  full_coords)
+
+        num_data, adj, feats, labels, train_data, val_data, test_data = \
+                data_augmentation(num_data, train_adj, full_adj, feats, labels, 
+                                  train_data, val_data, test_data)
     
         print("Done. {} seconds.".format(time()-start_time))
         with open(npz_file, 'wb') as fwrite:
             np.savez(fwrite, num_data=num_data, 
-                             full_v=full_v,   full_coords=full_coords,
-                             train_v=train_v, train_coords=train_coords,
+                             adj_data=adj.data, adj_indices=adj.indices,
+                             adj_indptr=adj.indptr, adj_shape=adj.shape,
                              feats=feats, labels=labels,
                              train_data=train_data, val_data=val_data, 
                              test_data=test_data)
 
-    def _get_adj(data, coords):
-        adj = sp.csr_matrix((data, (coords[0,:], coords[1,:])), 
-                            shape=(num_data, num_data))
-        return adj
-
-    train_adj = _get_adj(train_v, train_coords)
-    full_adj  = _get_adj(full_v,  full_coords)
-
-    return num_data, train_adj, full_adj, feats, labels, train_data, val_data, test_data
+    return num_data, adj, feats, labels, train_data, val_data, test_data
 
 
 def data_augmentation(num_data, train_adj, full_adj, feats, labels, train_data, val_data, test_data, n_rep=1):

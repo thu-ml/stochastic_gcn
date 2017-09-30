@@ -49,11 +49,9 @@ flags.DEFINE_float('polyak_decay', 0, 'Decay for model averaging')
 flags.DEFINE_float('alpha', 1.0, 'EMA coefficient')
 
 # Load data
-old_num_data, train_adj, full_adj, features, labels, train_d, val_d, test_d = \
-        load_data(FLAGS.dataset)
-
 num_data, adj, features, labels, train_d, val_d, test_d = \
-        data_augmentation(old_num_data, train_adj, full_adj, features, labels, train_d, val_d, test_d, FLAGS.num_reps)
+        load_data(FLAGS.dataset)
+old_num_data = num_data / (FLAGS.num_reps+1)
 
 print('Features shape = {}'.format(features.shape))
 print('{} training data, {} validation data, {} testing data.'.format(
