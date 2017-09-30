@@ -165,6 +165,7 @@ class Model(object):
                     self.average_values.append(np.zeros(var.get_shape(), np.float32))
 
         self.outputs = self.activations[-1]
+        self._predict()
 
         with tf.variable_scope(self.name):
             self.activations.append(self.inputs)
@@ -182,11 +183,11 @@ class Model(object):
 
         self.opt_op = [self.optimizer.minimize(self.loss)]
 
-    def predict(self):
+    def _predict(self):
         if self.multitask:
-            return tf.nn.sigmoid(self.outputs)
+            self.pred = tf.nn.sigmoid(self.outputs)
         else:
-            return tf.nn.softmax(self.outputs)
+            self.pred = tf.nn.softmax(self.outputs)
 
     def save(self, sess=None):
         if not sess:

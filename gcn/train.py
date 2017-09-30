@@ -88,7 +88,6 @@ if FLAGS.model == 'graphsage':
 else:
     model = NeighbourMLP(FLAGS.num_layers, placeholders, features, 
                          train_adj, full_adj, multitask=multitask)
-pred      = model.predict()
 print('Finised in {} seconds'.format(time()-t))
 
 train_degrees   = np.array([FLAGS.degree]*L, dtype=np.int32)
@@ -117,12 +116,7 @@ def evaluate(data):
         feed_dict[placeholders['is_training']] = False
         feed_dict[placeholders['alpha']] = 1.0
 
-        #for l in range(2):
-        #    print(feed_dict[placeholders['adj'][l]][0].shape)
-
-        model.get_data(feed_dict, False)
-        los, acc, prd = sess.run([model.loss, model.accuracy, pred], 
-                                 feed_dict=feed_dict)
+        los, acc, prd = model.run_one_step(sess, feed_dict, is_training=False)
         batch_size = prd.shape[0]
         total_loss += los * batch_size
         total_acc  += acc * batch_size
@@ -162,15 +156,13 @@ def SGDTrain():
             tsch += time() - t1
             if feed_dict==None:
                 break
-            # model.get_data(feed_dict, True)
             feed_dict[placeholders['dropout']] = FLAGS.dropout
             feed_dict[placeholders['is_training']] = True
             feed_dict[placeholders['alpha']] = 1.0 if epoch==0 else FLAGS.alpha
             amt_data += feed_dict[placeholders['fields'][0]].shape[0]
 
             # Training step
-            # outs = sess.run([model.opt_op, model.loss, model.accuracy], feed_dict=feed_dict)
-            outs = model.train_one_step(sess, feed_dict, True)
+            outs = model.run_one_step(sess, feed_dict, is_training=True)
             avg_loss.add(outs[1])
             avg_acc .add(outs[2])
             if iter % 100 == 0:
@@ -180,6 +172,7 @@ def SGDTrain():
         # Validation
         cost, acc, micro, macro, duration = evaluate(val_d)
         cost_val.append(cost)
+        test_cost, test_acc, test_micro, test_macro, test_duration = evaluate(test_d)
     
         # Print results
         print("Epoch:", '%04d' % (epoch + 1), 
