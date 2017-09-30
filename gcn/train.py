@@ -179,7 +179,7 @@ def SGDTrain():
         # Validation
         cost, acc, micro, macro, duration = evaluate(val_d)
         cost_val.append(cost)
-        #test_cost, test_acc, test_micro, test_macro, test_duration = evaluate(test_d)
+        test_cost, test_acc, test_micro, test_macro, test_duration = evaluate(test_d)
     
         # Print results
         print("Epoch:", '%04d' % (epoch + 1), 
@@ -250,4 +250,47 @@ def LBFGSTrain():
 
 # LBFGSTrain()
 SGDTrain()
-Test()
+for i in range(10 if FLAGS.load else 1):
+    Test()
+
+#def output_info(sch, verbose=False, val=False):
+#    model.backup_model(sess)
+#    batch = test_d[:1]
+#    feed_dict = sch.batch(batch)
+#    feed_dict[placeholders['is_training']] = False
+#    feed_dict[placeholders['alpha']] = 1.0
+#    model.get_data(feed_dict, False)
+#    act = sess.run(model.activations, feed_dict=feed_dict)
+#
+#    f0 = feed_dict[placeholders['fields'][0]]
+#    f1 = feed_dict[placeholders['fields'][1]]
+#    perm = np.argsort(f0)
+#    f0   = f0[perm]
+#    if verbose:
+#        for a in act:
+#            print(a.shape)
+#        a3   = act[3][perm]
+#        for i in range(a3.shape[0]):
+#            print(f0[i], a3[i][-3:])
+#        print('Agg {}'.format(act[4][0, -3:]))
+#
+#    if val:
+#        fadj = model.adj[f1]
+#        f0 = fadj.tocoo().col
+#        perm = np.argsort(f0)
+#        f0   = f0[perm]
+#        hist = model.history[0][f0]
+#        history      = feed_dict[model.history_ph[0]]
+#        history_mean = feed_dict[model.history_mean_ph[0]]
+#        print('A3 {}'.format(act[3][:,-3:]))
+#        print('History {}'.format(history[:,-3:]))
+#        print('History mean {}'.format(history_mean[0,-3:]))
+#        print('Agg {}'.format(act[4][0, -3:]))
+#
+#
+#    print('Final act: {}'.format(act[-1][0][:3]))
+#    model.restore_model(sess)
+#
+#output_info(eval_sch, verbose=True)
+#for i in range(2):
+#    output_info(train_sch, val=True)

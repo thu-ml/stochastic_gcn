@@ -186,16 +186,8 @@ class VRAggregator(Layer):
         a_self      = inputs[:tf.cast(ofield_size, tf.int32)]
         a_neighbour_current = dot(self.adj, inputs, sparse=True)
 
-        def training():
-            a_neighbour_history = dot(self.adj, self.history, sparse=True)
-            a_neighbour         = a_neighbour_current - a_neighbour_history + self.history_mean
-            return a_neighbour
-
-        def testing():
-            a_neighbour         = a_neighbour_current
-            return a_neighbour
-
-        a_neighbour         = tf.cond(self.is_training, training, testing)
+        a_neighbour_history = dot(self.adj, self.history, sparse=True)
+        a_neighbour         = a_neighbour_current - a_neighbour_history + self.history_mean
         self.new_history    = inputs
 
         if FLAGS.normalization == 'gcn':

@@ -168,7 +168,7 @@ class Model(object):
         self._predict()
 
         with tf.variable_scope(self.name):
-            self.activations.append(self.inputs)
+            #self.activations.append(self.inputs)  TODO: bug
             for layer in self.layers:
                 if hasattr(layer, 'new_history'):
                     self.history_ops.append(layer.new_history)
