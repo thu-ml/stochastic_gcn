@@ -37,14 +37,16 @@ def load_gcn_data(dataset_str):
         print('Found preprocessed dataset {}, loading...'.format(npz_file))
         data = np.load(npz_file)
         num_data     = data['num_data']
-        feats        = data['feats']
-        feats1       = data['feats1']
         labels       = data['labels']
         train_data   = data['train_data']
         val_data     = data['val_data']
         test_data    = data['test_data']
         adj = sp.csr_matrix((data['adj_data'], data['adj_indices'], data['adj_indptr']), 
                             shape=data['adj_shape'])
+        feats = sp.csr_matrix((data['feats_data'], data['feats_indices'], data['feats_indptr']), 
+                            shape=data['feats_shape'])
+        feats1 = sp.csr_matrix((data['feats1_data'], data['feats1_indices'], data['feats1_indptr']), 
+                            shape=data['feats1_shape'])
         print('Finished in {} seconds.'.format(time() - start_time))
     else:
         """Load data."""
@@ -173,46 +175,15 @@ def load_gcn_data(dataset_str):
             np.savez(fwrite, num_data=num_data, 
                              adj_data=adj.data, adj_indices=adj.indices,
                              adj_indptr=adj.indptr, adj_shape=adj.shape,
-                             feats=feats, feats1=feats1, labels=labels,
+                             feats_data=feats.data, feats_indices=feats.indices,
+                             feats_indptr=feats.indptr, feats_shape=feats.shape,
+                             feats1_data=feats1.data, feats1_indices=feats1.indices,
+                             feats1_indptr=feats1.indptr, feats1_shape=feats1.shape,
+                             labels=labels,
                              train_data=train_data, val_data=val_data, 
                              test_data=test_data)
 
     return num_data, adj, feats, feats1, labels, train_data, val_data, test_data
-
-
-def load_nell_data(dataset_str):
-    """Load data."""
-    names = ['x', 'y', 'tx', 'ty', 'allx', 'ally', 'graph']
-
-    objects = []
-    for i in range(len(names)):
-        with open("data/{}.{}".format(dataset_str, names[i]), 'rb') as f:
-            if sys.version_info > (3, 0):
-                objects.append(pkl.load(f, encoding='latin1'))
-            else:
-                objects.append(pkl.load(f))
-
-    x, y, tx, ty, allx, ally, graph = tuple(objects)
-    print tx.shape
-    
-    test_idx_reorder = parse_index_file("data/{}.test.index".format(dataset_str))
-    features = allx.tolil()
-    adj = nx.adjacency_matrix(nx.from_dict_of_lists(graph))
-    labels = ally
-    idx_test = test_idx_reorder
-    idx_train = range(len(y))
-    idx_val = range(len(y), len(y)+969)
-    train_mask = sample_mask(idx_train, labels.shape[0])
-    val_mask = sample_mask(idx_val, labels.shape[0])
-    test_mask = sample_mask(idx_test, labels.shape[0])
-    y_train = np.zeros(labels.shape)
-    y_val = np.zeros(labels.shape)
-    y_test = np.zeros(labels.shape)
-    y_train[train_mask, :] = labels[train_mask, :]
-    y_val[val_mask, :] = labels[val_mask, :]
-    y_test[test_mask, :] = labels[test_mask, :]
-
-    return adj, features, y_train, y_val, y_test, train_mask, val_mask, test_mask
 
 
 def load_graphsage_data(prefix, normalize=True):
