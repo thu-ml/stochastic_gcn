@@ -8,6 +8,7 @@ import tensorflow as tf
 from gcn.utils import *
 from gcn.dsgcn import DoublyStochasticGCN
 from gcn.vrgcn import VRGCN
+from gcn.mlp import NeighbourMLP
 from scheduler import PyScheduler
 from tensorflow.contrib.opt import ScipyOptimizerInterface
 import scipy.sparse as sp
@@ -36,7 +37,6 @@ flags.DEFINE_integer('test_batch_size', 1000, 'Testing batch size')
 flags.DEFINE_integer('test_degree', 20, 'Testing neighbour subsampling size')
 flags.DEFINE_integer('num_layers', 2, 'Number of layers')
 flags.DEFINE_integer('num_fc_layers', 1, 'Number of FC layers')
-flags.DEFINE_integer('num_hops', 3, 'Number of neighbour hops')
 flags.DEFINE_integer('degree', 10000, 'Neighbour subsampling size')
 flags.DEFINE_integer('num_reps', 1, 'Number of replicas')
 flags.DEFINE_float('beta1', 0.9, 'Beta1 for Adam')
@@ -61,6 +61,8 @@ print('{} training data, {} validation data, {} testing data.'.format(
 multitask    = True if FLAGS.dataset=='ppi' else False
 sparse_input = isinstance(features, sp.csr.csr_matrix)
 L            = FLAGS.num_layers-1 if FLAGS.preprocess else FLAGS.num_layers
+if FLAGS.model == 'mlp':
+    L = 0
 
 # Define placeholders
 placeholders = {
@@ -79,16 +81,16 @@ t = time()
 print('Building model...')
 if FLAGS.model == 'graphsage':
     if FLAGS.alpha == -1:
-        model = VRGCN(old_num_data, FLAGS.num_layers, FLAGS.preprocess,
-                                    placeholders, features, features1,
-                                    adj, multitask=multitask)
+        model = VRGCN
     else:
-        model = DoublyStochasticGCN(old_num_data, FLAGS.num_layers, FLAGS.preprocess,
-                                    placeholders, features, features1,
-                                    adj, multitask=multitask)
+        model = DoublyStochasticGCN
 else:
-    model = NeighbourMLP(FLAGS.num_layers, placeholders, features, 
-                         train_adj, full_adj, multitask=multitask)
+    model = NeighbourMLP
+
+model = model(old_num_data, FLAGS.num_layers, FLAGS.preprocess,
+                            placeholders, features, features1,
+                            adj, multitask=multitask)
+
 print('Finised in {} seconds'.format(time()-t))
 
 train_degrees   = np.array([FLAGS.degree]*L, dtype=np.int32)

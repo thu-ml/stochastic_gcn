@@ -1,13 +1,32 @@
+from gcn.layers import *
+from gcn.metrics import *
+from gcn.inits import *
+from time import time
+import scipy.sparse as sp
+from gcn.utils import sparse_to_tuple, dropout
+from gcn.models import Model
+import numpy as np
+
+flags = tf.app.flags
+FLAGS = flags.FLAGS
 
 class NeighbourMLP(Model):
-    def __init__(self, L, placeholders, features, train_adj, test_adj, **kwargs):
+    def __init__(self, data_per_fold, L, preprocess, placeholders, 
+                 features, features1, adj,
+                 **kwargs):
         super(NeighbourMLP, self).__init__(**kwargs)
 
-        self.L = L
-        self.sparse_input = not isinstance(features, np.ndarray)
-        self.inputs_ph    = self.get_ph('input')
-        self.inputs       = self.inputs_ph
+        self.data_per_fold = data_per_fold
+        self.preprocess    = preprocess
+        self.placeholders  = placeholders
+        self.features      = features
+        self.features1     = features1
+        self.adj           = adj
+        self.L             = FLAGS.num_fc_layers
 
+        self.build()
+
+    def _preprocess(self):
         # Preprocess aggregation
         print('Preprocessing aggregations')
         start_t = time()
@@ -15,41 +34,37 @@ class NeighbourMLP(Model):
         # Create all the features
         def _create_features(X, A):
             features = [X]
-            print('Hops = {}'.format(FLAGS.num_hops))
-            for i in range(FLAGS.num_hops):
+            print('Hops = {}'.format(FLAGS.num_layers))
+            for i in range(FLAGS.num_layers):
                 features.append(A.dot(features[-1]))
             return np.hstack(features)
 
-        self.train_features = _create_features(features, train_adj)
-        self.test_features  = _create_features(features, test_adj)
-        self.input_dim      = self.train_features.shape[1]
+        self.features = _create_features(self.features, self.adj)
+        self.input_dim      = self.features.shape[1]
         print('Finished in {} seconds.'.format(time() - start_t))
-
-        self.num_data = features.shape[0]
-        self.output_dim = placeholders['labels'].get_shape().as_list()[1]
-        self.placeholders = placeholders
-
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate, 
-                                                beta1=FLAGS.beta1, beta2=FLAGS.beta2)
-
-        self.build()
 
 
     def get_data(self, feed_dict, is_training):
         ids = feed_dict[self.placeholders['fields'][-1]]
-        inputs = self.train_features[ids] if is_training else self.test_features[ids]
         if self.sparse_input:
-            inputs = sparse_to_tuple(inputs)
+            feed_dict[self.inputs_ph] = sparse_to_tuple(self.features[ids])
+        else:
+            feed_dict[self.inputs_ph] = self.features[ids]
 
-        feed_dict[self.inputs_ph] = inputs
 
-
-    def train_one_step(self, sess, feed_dict, is_training):
+    def run_one_step(self, sess, feed_dict, is_training):
         self.get_data(feed_dict, is_training)
 
         # Run
-        outs = sess.run([self.opt_op, self.loss, self.accuracy], 
-                              feed_dict=feed_dict)
+        if is_training:
+            outs, hist, values = sess.run([[self.opt_op, self.loss, self.accuracy], 
+                                           self.history_ops, self.average_get_ops],
+                                  feed_dict=feed_dict)
+        else:
+            outs, hist, values = sess.run([[self.loss, self.accuracy, self.pred],
+                                           self.history_ops, self.average_get_ops],
+                                     feed_dict=feed_dict)
+        self.average_model(values)
 
         return outs
 
