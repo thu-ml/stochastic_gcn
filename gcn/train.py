@@ -174,9 +174,6 @@ def SGDTrain():
             outs = model.run_one_step(sess, feed_dict, is_training=True)
             avg_loss.add(outs[1])
             avg_acc .add(outs[2])
-            if iter % 100 == 0:
-                print(avg_loss.mean(), avg_acc.mean(), tsch, 
-                      feed_dict[placeholders['adj'][0]][0].shape, features.shape)
 
         # Validation
         cost, acc, micro, macro, duration = evaluate(val_d)

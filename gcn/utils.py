@@ -37,15 +37,14 @@ def load_gcn_data(dataset_str):
         print('Found preprocessed dataset {}, loading...'.format(npz_file))
         data = np.load(npz_file)
         num_data     = data['num_data']
-        full_v       = data['full_v']
-        full_coords  = data['full_coords']
-        train_v      = data['train_v']
-        train_coords = data['train_coords']
         feats        = data['feats']
+        feats1       = data['feats1']
         labels       = data['labels']
         train_data   = data['train_data']
         val_data     = data['val_data']
         test_data    = data['test_data']
+        adj = sp.csr_matrix((data['adj_data'], data['adj_indices'], data['adj_indptr']), 
+                            shape=data['adj_shape'])
         print('Finished in {} seconds.'.format(time() - start_time))
     else:
         """Load data."""
@@ -156,25 +155,29 @@ def load_gcn_data(dataset_str):
 
         feats = (features.data, features.indices, features.indptr, features.shape)
 
+        def _get_adj(data, coords):
+            adj = sp.csr_matrix((data, (coords[0,:], coords[1,:])), 
+                                shape=(num_data, num_data))
+            return adj
+
+        train_adj = _get_adj(train_v, train_coords)
+        full_adj  = _get_adj(full_v,  full_coords)
+        feats = sp.csr_matrix((feats[0], feats[1], feats[2]), 
+                              shape=feats[-1])
+
+        num_data, adj, feats, feats1, labels, train_data, val_data, test_data = \
+                data_augmentation(num_data, train_adj, full_adj, feats, labels, 
+                                  train_data, val_data, test_data)
+
         with open(npz_file, 'wb') as fwrite:
             np.savez(fwrite, num_data=num_data, 
-                             full_v=full_v,   full_coords=full_coords,
-                             train_v=train_v, train_coords=train_coords,
-                             feats=feats, labels=labels,
+                             adj_data=adj.data, adj_indices=adj.indices,
+                             adj_indptr=adj.indptr, adj_shape=adj.shape,
+                             feats=feats, feats1=feats1, labels=labels,
                              train_data=train_data, val_data=val_data, 
                              test_data=test_data)
 
-    def _get_adj(data, coords):
-        adj = sp.csr_matrix((data, (coords[0,:], coords[1,:])), 
-                            shape=(num_data, num_data))
-        return adj
-
-    train_adj = _get_adj(train_v, train_coords)
-    full_adj  = _get_adj(full_v,  full_coords)
-    feats = sp.csr_matrix((feats[0], feats[1], feats[2]), 
-                          shape=feats[-1])
-
-    return num_data, train_adj, full_adj, feats, labels, train_data, val_data, test_data
+    return num_data, adj, feats, feats1, labels, train_data, val_data, test_data
 
 
 def load_nell_data(dataset_str):
