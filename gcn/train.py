@@ -12,6 +12,7 @@ from gcn.mlp import NeighbourMLP
 from scheduler import PyScheduler
 from tensorflow.contrib.opt import ScipyOptimizerInterface
 import scipy.sparse as sp
+from stats import Stat
 
 # Set random seed
 seed = 123
@@ -178,7 +179,6 @@ def SGDTrain():
         # Validation
         cost, acc, micro, macro, duration = evaluate(val_d)
         cost_val.append(cost)
-        test_cost, test_acc, test_micro, test_macro, test_duration = evaluate(test_d)
     
         # Print results
         print("Epoch:", '%04d' % (epoch + 1), 
@@ -202,54 +202,61 @@ def SGDTrain():
     model.save(sess)
     
 
+def Analyze():
+    # Testing
+    batch = train_d[:FLAGS.batch_size]
+
+    num_vars = len(model.vars)
+    full_times = 100
+    full_preds = Stat()
+    full_grads = [Stat() for _ in range(num_vars)]
+    for i in range(full_times):
+        feed_dict = eval_sch.batch(batch)
+        feed_dict[placeholders['dropout']] = FLAGS.dropout
+        feed_dict[placeholders['is_training']] = True
+        feed_dict[placeholders['alpha']] = FLAGS.alpha
+        pred, grad = model.get_pred_and_grad(sess, feed_dict, is_training=True)
+        full_preds.add(pred)
+        for j in range(num_vars):
+            full_grads[j].add(grad[j])
+    print('Full stdev = {}'.format(np.mean(full_preds.std())))
+    for i in range(num_vars):
+        print('Full {} stdev = {}'.format(model.vars[i].name, np.mean(full_grads[i].std())))
+
+    part_times = 1000
+    part_preds = Stat()
+    part_grads = [Stat() for _ in range(num_vars)]
+    for i in range(part_times):
+        feed_dict = train_sch.batch(batch)
+        feed_dict[placeholders['dropout']] = FLAGS.dropout
+        feed_dict[placeholders['is_training']] = True
+        feed_dict[placeholders['alpha']] = FLAGS.alpha
+        pred, grad = model.get_pred_and_grad(sess, feed_dict, is_training=True)
+        part_preds.add(pred)
+        for j in range(num_vars):
+            part_grads[j].add(grad[j])
+    print('Part bias = {}'.format(np.mean(np.abs(part_preds.mean()-full_preds.mean()))))
+    print('Part stdev = {}'.format(np.mean(part_preds.std())))
+    for i in range(num_vars):
+        print('Part {} bias = {}'.format(model.vars[i].name, 
+            np.mean(np.abs(full_grads[i].mean() - part_grads[i].mean()))))
+        print('Part {} stdev = {}'.format(model.vars[i].name, np.mean(part_grads[i].std())))
+
+
 def Test():
     # Testing
     test_cost, test_acc, micro, macro, test_duration = evaluate(test_d)
     print("Test set results:", "cost=", "{:.5f}".format(test_cost),
-          "accuracy=", "{:.5f}".format(test_acc), 
+          "accuracy=", "{:.5f}".format(test_acc),
           "mi F1={:.5f} ma F1={:.5f} ".format(micro, macro),
           "time=", "{:.5f}".format(test_duration))
 
-def LBFGSTrain():
-    print(tf.trainable_variables())
-    optimizer = ScipyOptimizerInterface(model.loss, options={'maxiter': 100})
-    feed_dict = train_sch.minibatch(FLAGS.batch_size)
-    feed_dict.update({placeholders['dropout']: FLAGS.dropout})
-    feed_dict[placeholders['is_training']] = True
 
-    def lcallback(loss, acc):
-        print('Training loss = {:.4f} acc = {:.4f}'.format(loss, acc))
-
-    for i in range(3):
-        optimizer.minimize(sess,
-                feed_dict=feed_dict,
-                fetches=[model.loss, model.accuracy],
-                loss_callback=lcallback)
-
-        test_feed_dict = eval_sch.batch(val_d)
-        test_feed_dict[placeholders['is_training']] = False
-
-        t_test = time()
-        los, acc, prd = sess.run([model.loss, model.accuracy, pred], 
-                                 feed_dict=test_feed_dict)
-        micro, macro  = calc_f1(prd, test_feed_dict[placeholders['labels']], multitask)
-        print('Val loss = {:.4f}, acc = {:.4f}, micro = {:.4f}, macro = {:.4f}'
-                .format(los, acc, micro, macro))
-
-
-        test_feed_dict = eval_sch.batch(test_d)
-        test_feed_dict[placeholders['is_training']] = False
-
-        t_test = time()
-        los, acc, prd = sess.run([model.loss, model.accuracy, pred], 
-                                 feed_dict=test_feed_dict)
-        micro, macro  = calc_f1(prd, test_feed_dict[placeholders['labels']])
-        print('Test loss = {:.4f}, acc = {:.4f}, micro = {:.4f}, macro = {:.4f}'
-                .format(los, acc, micro, macro))
-
-# LBFGSTrain()
 SGDTrain()
-for i in range(10 if FLAGS.load else 1):
+
+Analyze()
+
+for i in range(FLAGS.num_layers + 1):
     Test()
 
 #def output_info(sch, verbose=False, val=False):

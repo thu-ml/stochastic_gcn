@@ -17,13 +17,14 @@ class Model(object):
             assert kwarg in allowed_kwargs, 'Invalid keyword argument: ' + kwarg
         name = kwargs.get('name')
         if not name:
-            name = self.__class__.__name__.lower()
+            #name = self.__class__.__name__.lower()
+            name = 'model'
         self.name = name
 
         logging = kwargs.get('logging', False)
         self.logging = logging
 
-        self.vars = {}
+        self.vars = []
         self.placeholders = {}
 
         self.layers = []
@@ -157,7 +158,7 @@ class Model(object):
 
             # Polyak-ops
             if FLAGS.polyak_decay > 0:
-                for var in layer.vars.values():
+                for var in layer.vars:
                     print(var.name, var.get_shape())
                     self.average_get_ops.append(var)
                     self.average_phs.append(tf.placeholder(tf.float32))
@@ -175,16 +176,17 @@ class Model(object):
 
         # Store model variables for easy access
         variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
-        self.vars = {var.name: var for var in variables}
+        self.vars = variables
         print('Model variables')
-        for k in self.vars.keys():
-            print(k)
+        for k in self.vars:
+            print(k.name, k.get_shape())
 
         # Build metrics
         self._loss()
         self._accuracy()
 
         self.opt_op = [self.optimizer.minimize(self.loss)]
+        self.grads  = tf.gradients(self.loss, self.vars)
 
     def _predict(self):
         if self.multitask:

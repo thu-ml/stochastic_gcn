@@ -65,6 +65,16 @@ class VRGCN(GCN):
 
         return outs
 
+    def get_pred_and_grad(self, sess, feed_dict, is_training):
+        self.get_data(feed_dict, is_training)
+
+        # Run
+        pred, grads = sess.run([self.pred, self.grads], 
+                               feed_dict=feed_dict)
+
+        return pred, grads
+
+
     def _build_aggregators(self):
         adjs   = self.placeholders['adj']
         for l in range(self.L):
