@@ -305,6 +305,84 @@ def load_graphsage_data(prefix, normalize=True):
     return num_data, adj, feats, feats1, labels, train_data, val_data, test_data
 
 
+def load_youtube_data(prefix, ptrain):
+    npz_file = 'data/{}_{}.npz'.format(prefix, ptrain)
+    if os.path.exists(npz_file):
+        start_time = time()
+        print('Found preprocessed dataset {}, loading...'.format(npz_file))
+        data = np.load(npz_file)
+        num_data     = data['num_data']
+        labels       = data['labels']
+        train_data   = data['train_data']
+        val_data     = data['val_data']
+        test_data    = data['test_data']
+        adj = sp.csr_matrix((data['adj_data'], data['adj_indices'], data['adj_indptr']), 
+                            shape=data['adj_shape'])
+        feats = sp.csr_matrix((data['feats_data'], data['feats_indices'], data['feats_indptr']), 
+                            shape=data['feats_shape'])
+        feats1 = sp.csr_matrix((data['feats1_data'], data['feats1_indices'], data['feats1_indptr']), 
+                            shape=data['feats1_shape'])
+        print('Finished in {} seconds.'.format(time() - start_time))
+    else:
+        start_time = time()
+        # read edges
+        with open('data/'+prefix+'/edges.csv') as f:
+            links = [link.split(',') for link in f.readlines()]
+            links = [(int(link[0])-1, int(link[1])-1) for link in links]
+        links = np.array(links).astype(np.int32)
+        num_data = np.max(links)+1
+        adj = sp.csr_matrix((np.ones(links.shape[0], dtype=np.float32), 
+                             (links[:,0], links[:,1])),
+                             shape=(num_data, num_data))
+        adj = adj + adj.transpose()
+
+        def _normalize_adj(adj):
+            rowsum = np.array(adj.sum(1)).flatten()
+            d_inv  = 1.0 / (rowsum+1e-20)
+            d_mat_inv = sp.diags(d_inv, 0)
+            adj = d_mat_inv.dot(adj)
+            return adj
+
+        adj = _normalize_adj(adj)
+
+        feats = sp.eye(num_data, dtype=np.float32).tocsr()
+        feats1 = adj.dot(feats)
+        num_classes = 47
+
+        labels = np.zeros((num_data, num_classes), dtype=np.float32)
+        with open('data/'+prefix+'/group-edges.csv') as f:
+            for line in f.readlines():
+                line = line.split(',')
+                labels[int(line[0])-1, int(line[1])-1] = 1
+
+        data = np.nonzero(labels.sum(1))[0].astype(np.int32)
+
+        np.random.shuffle(data)
+        n_train = int(len(data)*ptrain)
+        train_data = np.copy(data[:n_train])
+        val_data   = np.copy(data[n_train:])
+        test_data  = np.copy(data[n_train:])
+
+        num_data, adj, feats, feats1, labels, train_data, val_data, test_data = \
+                data_augmentation(num_data, adj, adj, feats, labels, 
+                                  train_data, val_data, test_data)
+
+        print("Done. {} seconds.".format(time()-start_time))
+        with open(npz_file, 'wb') as fwrite:
+            np.savez(fwrite, num_data=num_data, 
+                             adj_data=adj.data, adj_indices=adj.indices,
+                             adj_indptr=adj.indptr, adj_shape=adj.shape,
+                             feats_data=feats.data, feats_indices=feats.indices,
+                             feats_indptr=feats.indptr, feats_shape=feats.shape,
+                             feats1_data=feats1.data, feats1_indices=feats1.indices,
+                             feats1_indptr=feats1.indptr, feats1_shape=feats1.shape,
+                             labels=labels,
+                             train_data=train_data, val_data=val_data, 
+                             test_data=test_data)
+
+    return num_data, adj, feats, feats1, labels, train_data, val_data, test_data
+
+
 def data_augmentation(num_data, train_adj, full_adj, feats, labels, train_data, val_data, test_data, n_rep=1):
     if isinstance(feats, np.ndarray):
         feats  = np.tile(feats,  [n_rep+1, 1])
@@ -359,6 +437,8 @@ def load_data(dataset):
     gcn_datasets = set(['cora', 'citeseer', 'pubmed', 'nell'])
     if dataset in gcn_datasets:
         return load_gcn_data(dataset)
+    elif dataset == 'youtube':
+        return load_youtube_data(dataset, 0.1)
     else:
         return load_graphsage_data('data/{}'.format(dataset))
 

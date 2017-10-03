@@ -38,7 +38,7 @@ flags.DEFINE_integer('test_batch_size', 1000, 'Testing batch size')
 flags.DEFINE_integer('test_degree', 20, 'Testing neighbour subsampling size')
 flags.DEFINE_integer('num_layers', 2, 'Number of layers')
 flags.DEFINE_integer('num_fc_layers', 1, 'Number of FC layers')
-flags.DEFINE_integer('degree', 10000, 'Neighbour subsampling size')
+flags.DEFINE_integer('degree', 20, 'Neighbour subsampling size')
 flags.DEFINE_integer('num_reps', 1, 'Number of replicas')
 flags.DEFINE_float('beta1', 0.9, 'Beta1 for Adam')
 flags.DEFINE_float('beta2', 0.999, 'Beta2 for Adam')
@@ -176,8 +176,8 @@ def SGDTrain():
             avg_loss.add(outs[1])
             avg_acc .add(outs[2])
 
-        # Validation
-        cost, acc, micro, macro, duration = evaluate(val_d)
+        # Validation 
+        cost, acc, micro, macro, duration = evaluate(val_d[:3000]) # TODO hack
         cost_val.append(cost)
     
         # Print results
