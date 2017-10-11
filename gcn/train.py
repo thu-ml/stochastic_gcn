@@ -177,7 +177,7 @@ def SGDTrain():
             avg_acc .add(outs[2])
 
         # Validation 
-        cost, acc, micro, macro, duration = evaluate(val_d[:3000]) # TODO hack
+        cost, acc, micro, macro, duration = evaluate(val_d)
         cost_val.append(cost)
     
         # Print results
@@ -254,7 +254,7 @@ def Test():
 
 SGDTrain()
 
-Analyze()
+#Analyze()
 
 for i in range(FLAGS.num_layers + 1):
     Test()

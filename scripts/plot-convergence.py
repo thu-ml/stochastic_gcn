@@ -5,21 +5,32 @@ import os, sys
 import numpy as np
 
 data_dir   = 'logs'
-datasets   = ['cora', 'citeseer', 'pubmed', 'ppi']
+datasets   = ['cora', 'citeseer', 'pubmed', 'nell', 'ppi', 'reddit']
 
-exps = [(20, 1, False, True, 'k', 'B=20, preprocess'),
-        (1, 1, False, True, 'r', 'B=1, preprocess'),
-        (1, 1, False, False, 'r:', 'B=1, nopreprocess'),
-        (1, -1, False, True, 'b', 'VR, B=1, preprocess'),
-        (1, -1, False, False, 'b:', 'VR, B=1, nopreprocess')]
+exps = [(20, 1, True, True, 'k', 'B=20, preprocess'),
+        (1, 1, True, True, 'r', 'B=1, preprocess'),
+        (1, 1, True, False, 'r:', 'B=1, nopreprocess'),
+        (1, -1, True, True, 'b', 'VR, B=1, preprocess'),
+        (1, -1, True, False, 'b:', 'VR, B=1, nopreprocess')]
+#exps = [(20, 1, True, True, 'k', 'B=20, preprocess'),
+#        (20, 1, False, True, 'k--', 'B=20, preprocess, nodropout'),
+#        (1, 1, False, True, 'r--', 'B=1, preprocess, nodropout'),
+#        (1, -1, False, True, 'b--', 'VR, B=1, preprocess, nodropout')]
 
 for data in datasets:
     fig, ax = plt.subplots(2, 3, figsize=(16, 8))
     cnt = 0
     handles = []
     for deg, a, dropout, pp, style, _ in exps:
+        dropout_rate = 0
+        if dropout:
+            if data in set(['cora', 'citeseer', 'pubmed', 'nell']):
+                dropout_rate = 0.5
+            else:
+                dropout_rate = 0.2
+
         log_file = 'logs/{}_pp{}_dropout{}_deg{}_a{}.log'.format(
-                    data, pp, dropout, deg, a)
+                    data, pp, dropout_rate, deg, a)
         print(log_file)
         losses   = []
         amt_data = []
@@ -33,10 +44,7 @@ for data in datasets:
                     acc.append(float(line[9]))
                     amt_data.append(float(line[-1]))
 
-        if dropout:
-            xs = np.arange(len(losses)) * 16
-        else:
-            xs = np.arange(len(losses))
+        xs = np.arange(len(losses))
         l = ax[0,0].plot(xs, losses, style, alpha=0.5)
         ax[0,1].plot(xs, acc,    style, alpha=0.5)
         ax[1,0].plot(amt_data, losses, style, alpha=0.5)
@@ -56,23 +64,29 @@ for data in datasets:
     ax[0,1].set_ylabel('Validation accuracy')
     ax[1,0].set_ylabel('Validation loss')
     ax[1,1].set_ylabel('Validation accuracy')
-    ax[0,0].set_xlim([0, 200])
-    ax[0,1].set_xlim([0, 200])
     ylim = (0, 0)
     if data=='cora':
-        ylim = (0.7, 0.81)
+        ylim = (0.6, 0.81)
     elif data=='pubmed':
-        ylim = (0.7, 0.81)
+        ylim = (0.6, 0.81)
     elif data=='citeseer':
-        ylim = (0.65, 0.75)
+        ylim = (0.60, 0.75)
+    elif data=='nell':
+        ylim = (0.0, 0.7)
+    elif data=='ppi':
+        ylim = (0.7, 1.0)
+    elif data=='reddit':
+        ylim = (0.85, 1.0)
     else:
-        ylim = (0.95, 1.0)
-    if data=='ppi':
+        ylim = (0.55, 0.7)
+    if data=='ppi' or data=='reddit':
         xlim = (0, 1e7)
     else:
-        xlim = (0, 250000)
+        xlim = (0, 100000)
     if data=='ppi':
-        xlim0 = (0, 1000)
+        xlim0 = (0, 400)
+    elif data=='reddit':
+        xlim0 = (0, 50)
     else:
         xlim0 = (0, 200)
 

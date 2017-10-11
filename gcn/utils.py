@@ -438,7 +438,7 @@ def load_data(dataset):
     if dataset in gcn_datasets:
         return load_gcn_data(dataset)
     elif dataset == 'youtube':
-        return load_youtube_data(dataset, 0.1)
+        return load_youtube_data(dataset, 0.9)
     else:
         return load_graphsage_data('data/{}'.format(dataset))
 
