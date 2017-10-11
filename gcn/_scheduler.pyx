@@ -11,7 +11,7 @@ cdef extern from "scheduler.h":
         Scheduler(float*, int*, int*, int, int, int) except +
         void start_batch(int, int*)
         void expand(int)
-        vector[float] adj_w, edg_w
+        vector[float] adj_w, edg_w, degree, scale, node_sum
         vector[int] field, new_field, adj_i, adj_p, edg_s, edg_t, visited
 
 cdef copy_int(int[:] buffer, int* ptr, int size):
