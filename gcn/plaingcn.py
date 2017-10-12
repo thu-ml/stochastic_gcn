@@ -25,7 +25,12 @@ class PlainGCN(GCN):
     def get_data(self, feed_dict, is_training):
         for l in range(self.L):
             dim = self.agg0_dim if l==0 else FLAGS.hidden1
-            self.g_ops += feed_dict[self.placeholders['adj'][l]][0].shape[0] * dim * 2
+            adj = feed_dict[self.placeholders['adj'][l]][0]
+            self.g_ops += adj.shape[0] * dim * 2
+            self.adj_sizes[l] += adj.shape[0]
+        for l in range(self.L+1):
+            self.field_sizes[l] += feed_dict[self.placeholders['fields'][l]].size
+
         for c, l in self.layer_comp:
             self.nn_ops += c * feed_dict[self.placeholders['fields'][l]].size * 4
 

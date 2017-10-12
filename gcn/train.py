@@ -52,7 +52,7 @@ flags.DEFINE_float('alpha', 1.0, 'EMA coefficient')
 num_data, train_adj, full_adj, features, train_features, test_features, labels, train_d, val_d, test_d = \
         load_data(FLAGS.dataset)
 
-print('Features shape = {}'.format(features.shape))
+print('Features shape = {}, training edges = {}, testing edges = {}'.format(features.shape, train_adj.nnz, full_adj.nnz))
 print('{} training data, {} validation data, {} testing data.'.format(
     len(train_d), len(val_d), len(test_d)))
 
@@ -193,8 +193,8 @@ def SGDTrain():
               "(sch {:.5f} s)".format(tsch),
               "data = {}".format(amt_data))
         G = float(2**30)
-        print('TF time = {}, g time = {}, G GFLOPS = {}, NN GFLOPS = {}'.format(
-              model.run_t, model.g_t, model.g_ops/G, model.nn_ops/G))
+        print('TF time = {}, g time = {}, G GFLOPS = {}, NN GFLOPS = {}, field sizes = {}, adj sizes = {}, fadj sizes = {}'.format(
+              model.run_t, model.g_t, model.g_ops/G, model.nn_ops/G, model.field_sizes, model.adj_sizes, model.fadj_sizes))
     
         if epoch > FLAGS.early_stopping and cost_val[-1] > np.mean(cost_val[-(FLAGS.early_stopping+1):-1]):
             print("Early stopping...")

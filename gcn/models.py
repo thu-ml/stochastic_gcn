@@ -304,3 +304,6 @@ class GCN(Model):
         self.g_t   = 0
         self.g_ops = 0
         self.nn_ops = 0
+        self.field_sizes = np.zeros(self.L+1)
+        self.adj_sizes   = np.zeros(self.L)
+        self.fadj_sizes  = np.zeros(self.L)
