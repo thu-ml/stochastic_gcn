@@ -186,6 +186,7 @@ class VRAggregator(Layer):
         a_self      = inputs[:tf.cast(ofield_size, tf.int32)]
         a_neighbour_current = dot(self.adj, inputs, sparse=True)
 
+        print('History size = {}'.format(self.history.get_shape()))
         a_neighbour_history = dot(self.adj, self.history, sparse=True)
         a_neighbour         = a_neighbour_current - a_neighbour_history + self.history_mean
         self.new_history    = inputs

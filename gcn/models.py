@@ -9,6 +9,7 @@ import numpy as np
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 
+# History -> History_mean -> Loss, gradient -> History
 
 class Model(object):
     def __init__(self, **kwargs):
@@ -89,11 +90,16 @@ class Model(object):
             self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
 
-    def get_ph(self, name):
-        if self.sparse_input:
-            return tf.sparse_placeholder(tf.float32, name=name)
+    def get_variable(self, name, value):
+        if isinstance(value, sp.coo_matrix):
+            value = sparse_to_tuple(value)
+            indices = tf.Variable(tf.constant(value[0]), name=name+'_indices', trainable=False)
+            values  = tf.Variable(tf.constant(value[1]), name=name+'_values', trainable=False)
+            dense_shape = tf.Variable(tf.constant(value[2]), name=name+'_dense_shape', trainable=False)
+            return tf.sparse_reorder(tf.SparseTensor(indices, values, dense_shape))
         else:
-            return tf.placeholder(tf.float32, name=name)
+            value = tf.Variable(tf.constant(value), name=name, trainable=False)
+            return value
 
 
     def average_model(self, values):
@@ -117,24 +123,20 @@ class Model(object):
             
 
     def build(self):
-        self.sparse_input   = not isinstance(self.features, np.ndarray)
-        self.sparse_mm      = self.sparse_input
-        self.inputs_ph      = self.get_ph('input')
-
-        self.inputs         = self.inputs_ph
+        self.sparse_mm     = self.sparse_input
         if self.sparse_input:
-            self.inputs     = tf.sparse_reorder(self.inputs)
-        if not self.preprocess and self.sparse_input:
             print('Warning: we do not support sparse input without pre-processing. Converting to dense...')
-            self.inputs     = tf.sparse_to_dense(self.inputs.indices, 
+            self.inputs    = tf.sparse_to_dense(self.inputs.indices, 
                                                  self.inputs.dense_shape,
                                                  self.inputs.values)
-            self.sparse_mm  = False
+            self.sparse_mm = False
 
-        self.num_data       = self.features.shape[0]
+        self.inputs = tf.gather(self.inputs, self.placeholders['fields'][0])
 
-        self.output_dim     = self.placeholders['labels'].get_shape().as_list()[1]
-        self.placeholders   = self.placeholders
+        self.num_data      = self.train_adj.shape[0]
+
+        self.output_dim    = self.placeholders['labels'].get_shape().as_list()[1]
+        self.placeholders  = self.placeholders
 
         self._preprocess()
 
@@ -144,35 +146,20 @@ class Model(object):
             self._build_aggregators()
             self._build()
 
-        # Build sequential layer model
-        self.average_get_ops    = []
-        self.average_phs        = []
-        self.average_update_ops = []
-        self.average_values     = []
-
         self.activations.append(self.inputs)
         for layer in self.layers:
             hidden = layer(self.activations[-1])
             print('{} shape = {}'.format(layer.name, hidden.get_shape()))
             self.activations.append(hidden)
 
-            # Polyak-ops
-            if FLAGS.polyak_decay > 0:
-                for var in layer.vars:
-                    print(var.name, var.get_shape())
-                    self.average_get_ops.append(var)
-                    self.average_phs.append(tf.placeholder(tf.float32))
-                    self.average_update_ops.append(tf.assign(var, self.average_phs[-1]))
-                    self.average_values.append(np.zeros(var.get_shape(), np.float32))
-
         self.outputs = self.activations[-1]
-        self._predict()
+        self.update_history = []
+        for l in range(self.L):
+            ifield = self.placeholders['fields'][l]
+            self.update_history.append(tf.scatter_update(
+                self.history[l], ifield, self.aggregators[l].new_history))
 
-        with tf.variable_scope(self.name):
-            #self.activations.append(self.inputs)  TODO: bug
-            for layer in self.layers:
-                if hasattr(layer, 'new_history'):
-                    self.history_ops.append(layer.new_history)
+        self._predict()
 
         # Store model variables for easy access
         variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
@@ -186,6 +173,11 @@ class Model(object):
         self._accuracy()
 
         self.opt_op = [self.optimizer.minimize(self.loss)]
+        self.train_op = []
+        with tf.control_dependencies(self.opt_op):
+            update_op = tf.group(*self.update_history)
+        with tf.control_dependencies([update_op]):
+            self.opt_op = tf.constant(1.0)
         self.grads  = tf.gradients(self.loss, self.vars)
 
     def _predict(self):
@@ -211,44 +203,40 @@ class Model(object):
 
 
 class GCN(Model):
-    def __init__(self, data_per_fold, L, preprocess, placeholders, 
-                 features, features1, adj, 
+    def __init__(self, L, preprocess, placeholders, 
+                 features, train_features, test_features, train_adj, test_adj, 
                  **kwargs):
         super(GCN, self).__init__(**kwargs)
 
-        self.data_per_fold = data_per_fold
         self.L             = L
         self.preprocess    = preprocess
         self.placeholders  = placeholders
-        self.features      = features
-        self.features1     = features1
-        self.adj           = adj
+        self.sparse_input  = not isinstance(features, np.ndarray)
 
+        self.input_dim = features.shape[1]
+        self_dim       = 0 if FLAGS.normalization=='gcn' else self.input_dim
+        if preprocess:
+            self_features  = features[:,:self_dim]
+            stacker        = sp.hstack if self.sparse_input else np.hstack
+            train_features = stacker((self_features, train_features))
+            test_features  = stacker((self_features, test_features))
+        else:
+            train_features = features
+            test_features  = features
+
+        train_features    = self.get_variable('train_features', train_features)
+        test_features     = self.get_variable('test_features',  test_features)
+        self.inputs = tf.cond(self.placeholders['is_training'], 
+                              lambda: train_features,
+                              lambda: test_features)
+
+        self.train_adj = train_adj
+        self.test_adj  = test_adj
         self.build()
 
     def _preprocess(self):
-        self.input_dim = self.features.shape[1]
-        self_dim       = 0 if FLAGS.normalization=='gcn' else self.input_dim
-
         if self.preprocess:
-            self_features = self.features[:,:self_dim]
-            #nbr_features  = self.adj.dot(self.features)
-            nbr_features  = self.features1
             self.L       -= 1
-        else:
-            self_features = self.features
-            nbr_features  = np.zeros((self.num_data, 0), dtype=np.float32)
-
-        num_training_data = self.data_per_fold*FLAGS.num_reps
-        if self.sparse_input:
-            self.features = sp.hstack((self_features, nbr_features)).tocsr()
-            if FLAGS.det_dropout:
-                self.features[:num_training_data] = sparse_dropout(self.features[:num_training_data], 
-                                                                   1-FLAGS.dropout)
-        else:
-            self.features = np.hstack((self_features, nbr_features))
-            if FLAGS.det_dropout:
-                self.features[:num_training_data] = dropout(self.features[:num_training_data], 1-FLAGS.dropout)
 
         self.agg0_dim       = FLAGS.hidden1 if self.preprocess else self.input_dim
 
@@ -264,9 +252,8 @@ class GCN(Model):
         self.layer_comp = []
 
         if self.preprocess:
-            if not FLAGS.det_dropout:
-                self.layers.append(Dropout(1-self.placeholders['dropout'],
-                                           self.placeholders['is_training']))
+            self.layers.append(Dropout(1-self.placeholders['dropout'],
+                                       self.placeholders['is_training']))
             for l in range(FLAGS.num_fc_layers):
                 input_dim = self.input_dim*dim_s if l==0 else FLAGS.hidden1
                 sparse_inputs = self.sparse_mm if l==0 else False
@@ -282,9 +269,8 @@ class GCN(Model):
 
         for l in range(self.L):
             self.layers.append(self.aggregators[l])
-            if not FLAGS.det_dropout:
-                self.layers.append(Dropout(1-self.placeholders['dropout'],
-                                           self.placeholders['is_training']))
+            self.layers.append(Dropout(1-self.placeholders['dropout'],
+                                       self.placeholders['is_training']))
             for l2 in range(FLAGS.num_fc_layers):
                 dim        = self.agg0_dim if l==0 else FLAGS.hidden1
                 input_dim  = dim*dim_s if l2==0 else FLAGS.hidden1

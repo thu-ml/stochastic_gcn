@@ -41,12 +41,11 @@ def load_gcn_data(dataset_str):
         train_data   = data['train_data']
         val_data     = data['val_data']
         test_data    = data['test_data']
-        adj = sp.csr_matrix((data['adj_data'], data['adj_indices'], data['adj_indptr']), 
-                            shape=data['adj_shape'])
-        feats = sp.csr_matrix((data['feats_data'], data['feats_indices'], data['feats_indptr']), 
-                            shape=data['feats_shape'])
-        feats1 = sp.csr_matrix((data['feats1_data'], data['feats1_indices'], data['feats1_indptr']), 
-                            shape=data['feats1_shape'])
+        train_adj = sp.csr_matrix((data['train_adj_data'], data['train_adj_indices'], data['train_adj_indptr']), shape=data['train_adj_shape'])
+        full_adj = sp.csr_matrix((data['full_adj_data'], data['full_adj_indices'], data['full_adj_indptr']), shape=data['full_adj_shape'])
+        feats = sp.csr_matrix((data['feats_data'], data['feats_indices'], data['feats_indptr']), shape=data['feats_shape'])
+        train_feats = sp.csr_matrix((data['train_feats_data'], data['train_feats_indices'], data['train_feats_indptr']), shape=data['train_feats_shape'])
+        test_feats = sp.csr_matrix((data['test_feats_data'], data['test_feats_indices'], data['test_feats_indptr']), shape=data['test_feats_shape'])
         print('Finished in {} seconds.'.format(time() - start_time))
     else:
         """Load data."""
@@ -167,23 +166,21 @@ def load_gcn_data(dataset_str):
         feats = sp.csr_matrix((feats[0], feats[1], feats[2]), 
                               shape=feats[-1])
 
-        num_data, adj, feats, feats1, labels, train_data, val_data, test_data = \
-                data_augmentation(num_data, train_adj, full_adj, feats, labels, 
-                                  train_data, val_data, test_data)
+        train_feats = train_adj.dot(feats)
+        test_feats  = full_adj.dot(feats)
 
         with open(npz_file, 'wb') as fwrite:
             np.savez(fwrite, num_data=num_data, 
-                             adj_data=adj.data, adj_indices=adj.indices,
-                             adj_indptr=adj.indptr, adj_shape=adj.shape,
-                             feats_data=feats.data, feats_indices=feats.indices,
-                             feats_indptr=feats.indptr, feats_shape=feats.shape,
-                             feats1_data=feats1.data, feats1_indices=feats1.indices,
-                             feats1_indptr=feats1.indptr, feats1_shape=feats1.shape,
+                             train_adj_data=train_adj.data, train_adj_indices=train_adj.indices, train_adj_indptr=train_adj.indptr, train_adj_shape=train_adj.shape,
+                             full_adj_data=full_adj.data, full_adj_indices=full_adj.indices, full_adj_indptr=full_adj.indptr, full_adj_shape=full_adj.shape,
+                             feats_data=feats.data, feats_indices=feats.indices, feats_indptr=feats.indptr, feats_shape=feats.shape,
+                             train_feats_data=train_feats.data, train_feats_indices=train_feats.indices, train_feats_indptr=train_feats.indptr, train_feats_shape=train_feats.shape,
+                             test_feats_data=test_feats.data, test_feats_indices=test_feats.indices, test_feats_indptr=test_feats.indptr, test_feats_shape=test_feats.shape,
                              labels=labels,
                              train_data=train_data, val_data=val_data, 
                              test_data=test_data)
 
-    return num_data, adj, feats, feats1, labels, train_data, val_data, test_data
+    return num_data, train_adj, full_adj, feats, train_feats, test_feats, labels, train_data, val_data, test_data
 
 
 def load_graphsage_data(prefix, normalize=True):

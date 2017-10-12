@@ -29,7 +29,6 @@ flags.DEFINE_integer('epochs', 200, 'Min number of epochs to train.')
 flags.DEFINE_integer('data', 0, 'Max amount of visited data')
 flags.DEFINE_integer('hidden1', 32, 'Number of units in hidden layer 1.')
 flags.DEFINE_float('dropout', 0.5, 'Dropout rate (1 - keep probability).')
-flags.DEFINE_bool('det_dropout', False, 'Deterministic dropout')
 flags.DEFINE_bool('dense_input', False, 'Convert input to dense')
 flags.DEFINE_float('weight_decay', 5e-4, 'Weight for L2 loss on embedding matrix.')
 flags.DEFINE_integer('early_stopping', 10, 'Tolerance for early stopping (# of epochs).')
@@ -39,7 +38,6 @@ flags.DEFINE_integer('test_degree', 20, 'Testing neighbour subsampling size')
 flags.DEFINE_integer('num_layers', 2, 'Number of layers')
 flags.DEFINE_integer('num_fc_layers', 1, 'Number of FC layers')
 flags.DEFINE_integer('degree', 20, 'Neighbour subsampling size')
-flags.DEFINE_integer('num_reps', 1, 'Number of replicas')
 flags.DEFINE_float('beta1', 0.9, 'Beta1 for Adam')
 flags.DEFINE_float('beta2', 0.999, 'Beta2 for Adam')
 flags.DEFINE_string('normalization', 'gcn', 'gcn or graphsage')
@@ -51,9 +49,8 @@ flags.DEFINE_bool('load', False, 'Load the model')
 flags.DEFINE_float('alpha', 1.0, 'EMA coefficient')
 
 # Load data
-num_data, adj, features, features1, labels, train_d, val_d, test_d = \
+num_data, train_adj, full_adj, features, train_features, test_features, labels, train_d, val_d, test_d = \
         load_data(FLAGS.dataset)
-old_num_data = num_data / (FLAGS.num_reps+1)
 
 print('Features shape = {}'.format(features.shape))
 print('{} training data, {} validation data, {} testing data.'.format(
@@ -67,8 +64,8 @@ if FLAGS.model == 'mlp':
 
 # Define placeholders
 placeholders = {
-    'adj':    [tf.sparse_placeholder(tf.float32, name='adj_%d'%l) 
-               for l in range(L)],
+    'adj':    [tf.sparse_placeholder(tf.float32, name='adj_%d'%l) for l in range(L)],
+    'fadj':   [tf.sparse_placeholder(tf.float32, name='fadj_%d'%l) for l in range(L)],
     'fields': [tf.placeholder(tf.int32, shape=(None),name='field_%d'%l) 
                for l in range(L+1)],
     'labels': tf.placeholder(tf.float32, shape=(None, labels.shape[1]), 
@@ -88,16 +85,16 @@ if FLAGS.model == 'graphsage':
 else:
     model = NeighbourMLP
 
-model = model(old_num_data, FLAGS.num_layers, FLAGS.preprocess,
-                            placeholders, features, features1,
-                            adj, multitask=multitask)
+model = model(FLAGS.num_layers, FLAGS.preprocess, placeholders, 
+              features, train_features, test_features,
+              train_adj, full_adj, multitask=multitask)
 
 print('Finised in {} seconds'.format(time()-t))
 
 train_degrees   = np.array([FLAGS.degree]*L, dtype=np.int32)
 test_degrees    = np.array([FLAGS.test_degree]*L, dtype=np.int32)
-train_sch = PyScheduler(adj, labels, L, train_degrees, placeholders, train_d)
-eval_sch  = PyScheduler(adj, labels, L, test_degrees,  placeholders)
+train_sch = PyScheduler(train_adj, labels, L, train_degrees, placeholders, train_d)
+eval_sch  = PyScheduler(full_adj,  labels, L, test_degrees,  placeholders)
 
 
 # Initialize session
@@ -162,6 +159,8 @@ def SGDTrain():
         model.h_t   = 0
         model.g_ops = 0
         model.nn_ops = 0
+        model.amt_in = 0
+        model.amt_out = 0
         iter = 0
         tsch = 0
         while True:
@@ -197,8 +196,8 @@ def SGDTrain():
               "(sch {:.5f} s)".format(tsch),
               "data = {}".format(amt_data))
         G = float(2**30)
-        print('TF time = {}, g time = {}, h time = {}, g GFLOPS = {}, TF GFLOPS = {}'.format(
-              model.run_t, model.g_t, model.h_t, model.g_ops/G, model.nn_ops/G))
+        print('TF time = {}, g time = {}, h time = {}, g GFLOPS = {}, TF GFLOPS = {}, In GFLOPS = {}, Out GFLOPS = {}'.format(
+              model.run_t, model.g_t, model.h_t, model.g_ops/G, model.nn_ops/G, model.amt_in/G, model.amt_out/G))
     
         if epoch > FLAGS.early_stopping and cost_val[-1] > np.mean(cost_val[-(FLAGS.early_stopping+1):-1]):
             print("Early stopping...")
