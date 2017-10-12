@@ -261,6 +261,8 @@ class GCN(Model):
         alpha  = self.placeholders['alpha']
         cnt    = 0
 
+        self.layer_comp = []
+
         if self.preprocess:
             if not FLAGS.det_dropout:
                 self.layers.append(Dropout(1-self.placeholders['dropout'],
@@ -275,6 +277,7 @@ class GCN(Model):
                                          logging=self.logging,
                                          sparse_inputs=sparse_inputs,
                                          name='dense%d'%cnt, norm=FLAGS.layer_norm))
+                self.layer_comp.append((input_dim*FLAGS.hidden1, 0))
                 cnt += 1
 
         for l in range(self.L):
@@ -296,6 +299,7 @@ class GCN(Model):
                                          act=act,
                                          logging=self.logging,
                                          name='dense%d'%cnt, norm=layer_norm))
+                self.layer_comp.append((input_dim*output_dim, l+1))
                 cnt += 1
 
 

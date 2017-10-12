@@ -157,6 +157,11 @@ def SGDTrain():
         train_sch.shuffle()
     
         t = time()
+        model.run_t = 0
+        model.g_t   = 0
+        model.h_t   = 0
+        model.g_ops = 0
+        model.nn_ops = 0
         iter = 0
         tsch = 0
         while True:
@@ -191,6 +196,9 @@ def SGDTrain():
               "ttime=", "{:.5f}".format(duration),
               "(sch {:.5f} s)".format(tsch),
               "data = {}".format(amt_data))
+        G = float(2**30)
+        print('TF time = {}, g time = {}, h time = {}, g GFLOPS = {}, TF GFLOPS = {}'.format(
+              model.run_t, model.g_t, model.h_t, model.g_ops/G, model.nn_ops/G))
     
         if epoch > FLAGS.early_stopping and cost_val[-1] > np.mean(cost_val[-(FLAGS.early_stopping+1):-1]):
             print("Early stopping...")

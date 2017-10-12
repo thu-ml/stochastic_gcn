@@ -6,6 +6,7 @@ import scipy.sparse as sp
 from gcn.utils import sparse_to_tuple, dropout
 from gcn.models import GCN
 import numpy as np
+from history import mean_history
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
@@ -17,6 +18,11 @@ class VRGCN(GCN):
                  **kwargs):
         super(VRGCN, self).__init__(data_per_fold, L, preprocess, placeholders, 
                                     features, features1, adj, **kwargs)
+        self.run_t = 0
+        self.g_t   = 0
+        self.h_t   = 0
+        self.g_ops = 0
+        self.nn_ops = 0
 
     def _build_history(self):
         # Create history after each aggregation
@@ -40,14 +46,22 @@ class VRGCN(GCN):
         for l in range(self.L):
             ifield = feed_dict[self.placeholders['fields'][l]]
             ofield = feed_dict[self.placeholders['fields'][l+1]]
-            fadj   = self.adj[ofield]
             feed_dict[self.history_ph[l]] = self.history[l][ifield]
-            feed_dict[self.history_mean_ph[l]] = fadj.dot(self.history[l])
+            fadj   = self.adj[ofield]
+            #feed_dict[self.history_mean_ph[l]] = fadj.dot(self.history[l])
+            feed_dict[self.history_mean_ph[l]] = mean_history(fadj, self.history[l])
+            self.g_ops += fadj.nnz * self.history[l].shape[1] * 2
+
+        for c, l in self.layer_comp:
+            self.nn_ops += c * feed_dict[self.placeholders['fields'][l]].shape[0] * 4
 
     def run_one_step(self, sess, feed_dict, is_training):
+        t = time()
         self.get_data(feed_dict, is_training)
+        self.g_t += time() - t
 
         # Run
+        t = time()
         if is_training:
             outs, hist, values = sess.run([[self.opt_op, self.loss, self.accuracy], 
                                            self.history_ops, self.average_get_ops],
@@ -56,12 +70,16 @@ class VRGCN(GCN):
             outs, hist, values = sess.run([[self.loss, self.accuracy, self.pred],
                                            self.history_ops, self.average_get_ops],
                                      feed_dict=feed_dict)
+        self.run_t += time() - t
+
+        t = time()
         self.average_model(values)
 
         # Write history
         for l in range(self.L):
             field = feed_dict[self.placeholders['fields'][l]]
             self.history[l][field] = hist[l]
+        self.h_t += time() - t
 
         return outs
 
