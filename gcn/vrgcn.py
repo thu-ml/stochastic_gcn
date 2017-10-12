@@ -37,6 +37,7 @@ class VRGCN(GCN):
             history = tf.Variable(tf.zeros((self.num_data, dims), dtype=np.float32), 
                                   trainable=False, name='history_{}'.format(i))
             self.history.append(history)
+            print('History size = {} GB'.format(self.num_data*dims*4/1024.0/1024.0/1024.0))
             
             ifield = self.placeholders['fields'][i]
             fadj   = self.placeholders['fadj'][i]
@@ -64,9 +65,9 @@ class VRGCN(GCN):
         # Run
         t = time()
         if is_training:
-            outs = sess.run([self.opt_op, self.loss, self.accuracy], feed_dict=feed_dict)
+            outs = sess.run([self.train_op, self.loss, self.accuracy], feed_dict=feed_dict)
         else:
-            outs = sess.run([self.loss, self.accuracy, self.pred], feed_dict=feed_dict)
+            outs, _ = sess.run([[self.loss, self.accuracy, self.pred], self.test_op], feed_dict=feed_dict)
         self.run_t += time() - t
 
         return outs

@@ -192,13 +192,14 @@ def load_graphsage_data(prefix, normalize=True):
         data = np.load(prefix + '.npz')
         num_data     = data['num_data']
         feats        = data['feats']
-        feats1       = data['feats1']
+        train_feats  = data['train_feats']
+        test_feats   = data['test_feats']
         labels       = data['labels']
         train_data   = data['train_data']
         val_data     = data['val_data']
         test_data    = data['test_data']
-        adj = sp.csr_matrix((data['adj_data'], data['adj_indices'], data['adj_indptr']), 
-                            shape=data['adj_shape'])
+        train_adj = sp.csr_matrix((data['train_adj_data'], data['train_adj_indices'], data['train_adj_indptr']), shape=data['train_adj_shape'])
+        full_adj  = sp.csr_matrix((data['full_adj_data'], data['full_adj_indices'], data['full_adj_indptr']), shape=data['full_adj_shape'])
         print('Finished in {} seconds.'.format(time() - start_time))
     else:
         print('Loading data...')
@@ -285,21 +286,20 @@ def load_graphsage_data(prefix, normalize=True):
         
         train_adj = _get_adj(train_v, train_coords)
         full_adj  = _get_adj(full_v,  full_coords)
+        train_feats = train_adj.dot(feats)
+        test_feats  = full_adj.dot(feats)
 
-        num_data, adj, feats, feats1, labels, train_data, val_data, test_data = \
-                data_augmentation(num_data, train_adj, full_adj, feats, labels, 
-                                  train_data, val_data, test_data)
-    
         print("Done. {} seconds.".format(time()-start_time))
         with open(npz_file, 'wb') as fwrite:
             np.savez(fwrite, num_data=num_data, 
-                             adj_data=adj.data, adj_indices=adj.indices,
-                             adj_indptr=adj.indptr, adj_shape=adj.shape,
-                             feats=feats, feats1=feats1, labels=labels,
+                             train_adj_data=train_adj.data, train_adj_indices=train_adj.indices, train_adj_indptr=train_adj.indptr, train_adj_shape=train_adj.shape,
+                             full_adj_data=full_adj.data, full_adj_indices=full_adj.indices, full_adj_indptr=full_adj.indptr, full_adj_shape=full_adj.shape,
+                             feats=feats, train_feats=train_feats, test_feats=test_feats,
+                             labels=labels,
                              train_data=train_data, val_data=val_data, 
                              test_data=test_data)
 
-    return num_data, adj, feats, feats1, labels, train_data, val_data, test_data
+    return num_data, train_adj, full_adj, feats, train_feats, test_feats, labels, train_data, val_data, test_data
 
 
 def load_youtube_data(prefix, ptrain):

@@ -149,6 +149,8 @@ def SGDTrain():
         model.load(sess)
         return 
 
+    model.init(sess)
+
     # Train model
     for epoch in range(100000000):
         train_sch.shuffle()

@@ -98,8 +98,12 @@ class Model(object):
             dense_shape = tf.Variable(tf.constant(value[2]), name=name+'_dense_shape', trainable=False)
             return tf.sparse_reorder(tf.SparseTensor(indices, values, dense_shape))
         else:
-            value = tf.Variable(tf.constant(value), name=name, trainable=False)
-            return value
+            value_var = tf.Variable(tf.zeros(value.shape, dtype=tf.float32), name=name, trainable=False)
+            value_ph = tf.placeholder(tf.float32)
+            value_init = tf.assign(value_var, value_ph)
+            feed_dict = {value_ph: value}
+            print('Variable size = {} GB'.format(value.size * 4 / 1024.0 / 1024.0 / 1024.0))
+            return value_var, value_init, feed_dict
 
 
     def average_model(self, values):
@@ -157,7 +161,7 @@ class Model(object):
         for l in range(self.L):
             ifield = self.placeholders['fields'][l]
             self.update_history.append(tf.scatter_update(
-                self.history[l], ifield, self.aggregators[l].new_history))
+                self.history[l], ifield, self.aggregators[l].new_history).op)
 
         self._predict()
 
@@ -175,9 +179,8 @@ class Model(object):
         self.opt_op = [self.optimizer.minimize(self.loss)]
         self.train_op = []
         with tf.control_dependencies(self.opt_op):
-            update_op = tf.group(*self.update_history)
-        with tf.control_dependencies([update_op]):
-            self.opt_op = tf.constant(1.0)
+            self.train_op = tf.group(*self.update_history)
+        self.test_op = tf.group(*self.update_history)
         self.grads  = tf.gradients(self.loss, self.vars)
 
     def _predict(self):
@@ -224,8 +227,12 @@ class GCN(Model):
             train_features = features
             test_features  = features
 
-        train_features    = self.get_variable('train_features', train_features)
-        test_features     = self.get_variable('test_features',  test_features)
+        train_features, trainop, trainf = self.get_variable('train_features', train_features)
+        test_features, testop, testf    = self.get_variable('test_features',  test_features)
+        self.init_ops = [trainop, testop]
+        self.init_dict = trainf
+        self.init_dict.update(testf)
+
         self.inputs = tf.cond(self.placeholders['is_training'], 
                               lambda: train_features,
                               lambda: test_features)
@@ -233,6 +240,9 @@ class GCN(Model):
         self.train_adj = train_adj
         self.test_adj  = test_adj
         self.build()
+
+    def init(self, sess):
+        sess.run(self.init_ops, self.init_dict)
 
     def _preprocess(self):
         if self.preprocess:
