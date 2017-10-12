@@ -299,4 +299,8 @@ class GCN(Model):
                 self.layer_comp.append((input_dim*output_dim, l+1))
                 cnt += 1
 
-
+    def init_counts(self):
+        self.run_t = 0
+        self.g_t   = 0
+        self.g_ops = 0
+        self.nn_ops = 0

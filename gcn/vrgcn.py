@@ -19,13 +19,6 @@ class VRGCN(GCN):
         super(VRGCN, self).__init__(L, preprocess, placeholders, 
                                     features, train_features, test_features,
                                     train_adj, test_adj, **kwargs)
-        self.run_t = 0
-        self.g_t   = 0
-        self.h_t   = 0
-        self.g_ops = 0
-        self.nn_ops = 0
-        self.amt_in = 0
-        self.amt_out = 0
 
     def _build_history(self):
         # Create history after each aggregation
@@ -50,12 +43,12 @@ class VRGCN(GCN):
             ofield = feed_dict[self.placeholders['fields'][l+1]]
             fadj   = self.train_adj[ofield] if is_training else self.test_adj[ofield]
             feed_dict[self.placeholders['fadj'][l]] = sparse_to_tuple(fadj)
-#            self.g_ops += fadj.nnz * self.history[l].shape[1] * 2
-#            self.amt_in += feed_dict[self.history_ph[l]].size + feed_dict[self.history_mean_ph[l]].size
-#        self.amt_in += feed_dict[self.inputs_ph].size
-#
-#        for c, l in self.layer_comp:
-#            self.nn_ops += c * feed_dict[self.placeholders['fields'][l]].shape[0] * 4
+
+            dim = self.agg0_dim if l==0 else FLAGS.hidden1
+            self.g_ops += fadj.nnz * dim * 2
+            self.g_ops += feed_dict[self.placeholders['adj'][l]][0].shape[0] * dim * 2
+        for c, l in self.layer_comp:
+            self.nn_ops += c * feed_dict[self.placeholders['fields'][l]].size * 4
 
     def run_one_step(self, sess, feed_dict, is_training):
         t = time()

@@ -19,19 +19,15 @@ class PlainGCN(GCN):
                                     features, train_features, test_features,
                                     train_adj, test_adj, **kwargs)
 
-        self.run_t = 0
-        self.g_t   = 0
-        self.h_t   = 0
-        self.g_ops = 0
-        self.nn_ops = 0
-        self.amt_in = 0
-        self.amt_out = 0
-
     def _build_history(self):
         pass
 
     def get_data(self, feed_dict, is_training):
-        pass
+        for l in range(self.L):
+            dim = self.agg0_dim if l==0 else FLAGS.hidden1
+            self.g_ops += feed_dict[self.placeholders['adj'][l]][0].shape[0] * dim * 2
+        for c, l in self.layer_comp:
+            self.nn_ops += c * feed_dict[self.placeholders['fields'][l]].size * 4
 
     def run_one_step(self, sess, feed_dict, is_training):
         t = time()
