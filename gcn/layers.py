@@ -132,18 +132,19 @@ class GatherAggregator(Layer):
 class PlainAggregator(Layer):
     # H -> Z=AH
     # Z = concat(adj * inputs, inputs)
-    def __init__(self, adj, ifield, ofield, **kwargs):
+    def __init__(self, adj, **kwargs):
         super(PlainAggregator, self).__init__(**kwargs)
 
         self.adj    = adj
-        self.ifield = ifield
-        self.ofield = ofield
 
 
     def _call(self, inputs):
+        ofield_size = self.adj.dense_shape[0]
+        a_self      = inputs[:tf.cast(ofield_size, tf.int32)]
+
         # ofield * d
         a_neighbour = dot(self.adj, inputs, sparse=True)
-        a_self      = inputs[:tf.shape(self.ofield)[0], :]
+        a_self      = inputs[:tf.cast(ofield_size, tf.int32)]
         if FLAGS.normalization == 'gcn':
             return a_neighbour
         else:

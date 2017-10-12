@@ -6,7 +6,7 @@ import sys
 import tensorflow as tf
 
 from gcn.utils import *
-from gcn.dsgcn import DoublyStochasticGCN
+from gcn.plaingcn import PlainGCN
 from gcn.vrgcn import VRGCN
 from gcn.mlp import NeighbourMLP
 from scheduler import PyScheduler
@@ -81,7 +81,7 @@ if FLAGS.model == 'graphsage':
     if FLAGS.alpha == -1:
         model = VRGCN
     else:
-        model = DoublyStochasticGCN
+        model = PlainGCN
 else:
     model = NeighbourMLP
 
@@ -150,6 +150,7 @@ def SGDTrain():
         return 
 
     model.init(sess)
+    print('Start training...')
 
     # Train model
     for epoch in range(100000000):
