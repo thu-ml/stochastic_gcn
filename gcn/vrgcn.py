@@ -6,7 +6,7 @@ import scipy.sparse as sp
 from gcn.utils import sparse_to_tuple, dropout
 from gcn.models import GCN
 import numpy as np
-from history import mean_history
+from history import slice
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
@@ -41,7 +41,8 @@ class VRGCN(GCN):
         # Read history
         for l in range(self.L):
             ofield = feed_dict[self.placeholders['fields'][l+1]]
-            fadj   = self.train_adj[ofield] if is_training else self.test_adj[ofield]
+            #fadj   = self.train_adj[ofield] if is_training else self.test_adj[ofield]
+            fadj = slice(self.train_adj, ofield) if is_training else slice(self.test_adj, ofield)
             adj = feed_dict[self.placeholders['adj'][l]][0]
             feed_dict[self.placeholders['fadj'][l]] = sparse_to_tuple(fadj)
 

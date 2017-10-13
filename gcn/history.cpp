@@ -2,6 +2,7 @@
 #include <omp.h>
 #include <chrono>
 #include <iostream>
+#include <memory.h>
 #include <mkl.h>
 using namespace std;
 
@@ -33,6 +34,7 @@ using namespace std;
 //    auto t = chrono::duration<double>(end_t-start_t).count();
 //    cout << float(flops) / 1024 / 1024 / t << ' ' << flops << ' ' << t << endl;
 //}
+
 void compute_history(float *adj_w, int *adj_i, int *adjp, int num_data, int num_edges,
                      float *history, int dims, float *output) {
     vector<int> ptrb(adjp, adjp+num_data);
@@ -43,3 +45,22 @@ void compute_history(float *adj_w, int *adj_i, int *adjp, int num_data, int num_
                &alpha, "G00C00", adj_w, adj_i, ptrb.data(), ptre.data(), 
                history, &dims, &beta, output, &dims);
 }
+
+void c_indptr(int N, int *r, int *a_i, int *o_i) {
+    int nnz = 0;
+    for (int i = 0; i < N; i++) {
+        o_i[i] = nnz;
+        nnz += a_i[r[i]+1] - a_i[r[i]];
+    }
+    o_i[N] = nnz;
+}
+
+void c_slice(int N, int *r, float *a_d, int *a_i, int *a_p, float *o_d, int *o_i, int *o_p) {
+    for (int i = 0; i <N; i++){
+        auto sz = o_p[i+1] - o_p[i];
+        memcpy(o_d+o_p[i], a_d+a_p[r[i]], sz*sizeof(float));
+        memcpy(o_i+o_p[i], a_i+a_p[r[i]], sz*sizeof(int));
+    }
+}
+
+
