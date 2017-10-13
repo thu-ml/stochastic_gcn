@@ -4,6 +4,7 @@ from libc.string cimport memcpy
 cimport numpy as np
 import numpy as np
 from utils import sparse_to_tuple
+from time import time
 
 cdef extern from "scheduler.h":
     cdef cppclass Scheduler:
@@ -31,6 +32,7 @@ cdef class PyScheduler:
     cdef object labels, data, degrees, placeholders
     cdef int L
     cdef int start
+    cdef float t
 
     def __init__(self, adj, labels, L, degrees, placeholders, data=None):
         cdef float[:] ad = adj.data
@@ -44,10 +46,12 @@ cdef class PyScheduler:
         self.L = L
         self.start = 0
         self.placeholders = placeholders
+        self.t = 0
 
     def shuffle(self):
         np.random.shuffle(self.data)
         self.start = 0
+        self.t = 0
 
     def batch(self, data):
         cdef int    fsz
@@ -69,11 +73,14 @@ cdef class PyScheduler:
             edg_s = np.zeros((ne), dtype=np.int32)
             edg_t = np.zeros((ne), dtype=np.int32)
             edg_w = np.zeros((ne), dtype=np.float32)
+            edg_i = np.zeros((ne, 2), dtype=np.int32)
             copy_int  (edg_s, self.c_sch.edg_s.data(), ne)
             copy_int  (edg_t, self.c_sch.edg_t.data(), ne)
             copy_float(edg_w, self.c_sch.edg_w.data(), ne)
             shape = (fields[-2].shape[0], fields[-1].shape[0])
-            adj   = csr_matrix((edg_w, (edg_s, edg_t)), shape)
+            edg_i[:,0] = edg_s
+            edg_i[:,1] = edg_t
+            adj   = (edg_i, edg_w, shape)
             adjs.append(adj)
 
         fields.reverse()
@@ -90,11 +97,13 @@ cdef class PyScheduler:
 
     def get_feed_dict(self, fields, adjs):
         labels = self.labels[fields[-1]]
-        adjs   = sparse_to_tuple(adjs)
         feed_dict = {self.placeholders['adj'][i] : adjs[i] for i in range(self.L)}
         feed_dict[self.placeholders['labels']] = labels
         for i in range(self.L+1):
             feed_dict[self.placeholders['fields'][i]] = fields[i]
         return feed_dict
+
+    def get_t(self):
+        return self.t
 
 
