@@ -59,7 +59,14 @@ void c_slice(int N, int *r, float *a_d, int *a_i, int *a_p, float *o_d, int *o_i
     for (int i = 0; i <N; i++){
         auto sz = o_p[i+1] - o_p[i];
         memcpy(o_d+o_p[i], a_d+a_p[r[i]], sz*sizeof(float));
-        memcpy(o_i+o_p[i], a_i+a_p[r[i]], sz*sizeof(int));
+
+        int *oi = o_i + o_p[i] * 2;
+        int *ai = a_i + a_p[r[i]];
+        int len = o_p[i+1] - o_p[i];
+        for (int j = 0; j < len; j++) {
+            oi[j*2]   = i;
+            oi[j*2+1] = ai[j];
+        }
     }
 }
 

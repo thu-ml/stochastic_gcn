@@ -34,15 +34,18 @@ def slice(a, r):
         return csr_matrix((N, a.shape[1]), dtype=a.dtype)
 
     data    = np.zeros(nnz, dtype=np.float32)
-    indices = np.zeros(nnz, dtype=np.int32)
+    indices = np.zeros((nnz, 2), dtype=np.int32)
+    dense_shape = np.array([N, a.shape[1]], dtype=np.int32)
 
     cdef float[:] a_data    = a.data
     cdef int[:] a_indices   = a.indices
+
+    # COO
     cdef float[:] o_data    = data
-    cdef int[:] o_indices   = indices
+    cdef int[:,:] o_indices = indices
 
     c_slice(N, &rv[0], &a_data[0], &a_indices[0], &a_indptr[0],
-                       &o_data[0], &o_indices[0], &o_indptr[0])
+                       &o_data[0], &o_indices[0,0], &o_indptr[0])
 
-    return csr_matrix((data, indices, indptr), shape=(N, a.shape[1]))
+    return (indices, data, dense_shape)
 

@@ -44,13 +44,13 @@ class VRGCN(GCN):
             #fadj   = self.train_adj[ofield] if is_training else self.test_adj[ofield]
             fadj = slice(self.train_adj, ofield) if is_training else slice(self.test_adj, ofield)
             adj = feed_dict[self.placeholders['adj'][l]][0]
-            feed_dict[self.placeholders['fadj'][l]] = sparse_to_tuple(fadj)
+            feed_dict[self.placeholders['fadj'][l]] = fadj
 
             dim = self.agg0_dim if l==0 else FLAGS.hidden1
-            self.g_ops += fadj.nnz * dim * 2
+            self.g_ops += fadj[0].shape[0] * dim * 2
             self.g_ops += adj.shape[0] * dim * 2
             self.adj_sizes[l] += adj.shape[0]
-            self.fadj_sizes[l] += fadj.nnz
+            self.fadj_sizes[l] += fadj[0].shape[0]
         for l in range(self.L+1):
             self.field_sizes[l] += feed_dict[self.placeholders['fields'][l]].size
         for c, l in self.layer_comp:
