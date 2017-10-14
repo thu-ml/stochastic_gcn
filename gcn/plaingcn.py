@@ -71,7 +71,6 @@ class PlainGCN(GCN):
 
     def _build_aggregators(self):
         adjs   = self.placeholders['adj']
-        alpha  = self.placeholders['alpha']
         for l in range(self.L):
             self.aggregators.append(
                     PlainAggregator(adjs[l], name='agg%d'%l))

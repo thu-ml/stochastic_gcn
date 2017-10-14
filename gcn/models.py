@@ -242,7 +242,6 @@ class GCN(Model):
         fields = self.placeholders['fields']
         adjs   = self.placeholders['adj']
         dim_s  = 1 if FLAGS.normalization=='gcn' else 2
-        alpha  = self.placeholders['alpha']
         cnt    = 0
 
         self.layer_comp = []

@@ -31,21 +31,26 @@ flags.DEFINE_float('dropout', 0.5, 'Dropout rate (1 - keep probability).')
 flags.DEFINE_bool('dense_input', False, 'Convert input to dense')
 flags.DEFINE_float('weight_decay', 5e-4, 'Weight for L2 loss on embedding matrix.')
 flags.DEFINE_integer('early_stopping', 10, 'Tolerance for early stopping (# of epochs).')
+
+flags.DEFINE_integer('degree', 20, 'Neighbour subsampling size')
 flags.DEFINE_integer('batch_size', 1000, 'Minibatch size for SGD')
+flags.DEFINE_bool('cv', False, "Control variate")
+flags.DEFINE_bool('preprocess', True,  'Preprocess first aggregation')
+
 flags.DEFINE_integer('test_batch_size', 1000, 'Testing batch size')
 flags.DEFINE_integer('test_degree', 20, 'Testing neighbour subsampling size')
+flags.DEFINE_bool('test_cv', False, "Testing control variate")
+flags.DEFINE_bool('test_preprocess', True,  'Preprocess first aggregation')
+
 flags.DEFINE_integer('num_layers', 2, 'Number of layers')
 flags.DEFINE_integer('num_fc_layers', 1, 'Number of FC layers')
-flags.DEFINE_integer('degree', 20, 'Neighbour subsampling size')
 flags.DEFINE_float('beta1', 0.9, 'Beta1 for Adam')
 flags.DEFINE_float('beta2', 0.999, 'Beta2 for Adam')
 flags.DEFINE_string('normalization', 'gcn', 'gcn or graphsage')
 flags.DEFINE_bool('layer_norm', False, 'Layer normalization')
-flags.DEFINE_bool('preprocess', True,  'Preprocess first aggregation')
 flags.DEFINE_float('polyak_decay', 0, 'Decay for model averaging')
 flags.DEFINE_bool('load', False, 'Load the model')
 
-flags.DEFINE_float('alpha', 1.0, 'EMA coefficient')
 
 # Load data
 num_data, train_adj, full_adj, features, train_features, test_features, labels, train_d, val_d, test_d = \
@@ -57,7 +62,7 @@ print('{} training data, {} validation data, {} testing data.'.format(
 
 multitask    = True if FLAGS.dataset=='ppi' else False
 L            = FLAGS.num_layers-1 if FLAGS.preprocess else FLAGS.num_layers
-test_L       = FLAGS.num_layers-1
+test_L       = FLAGS.num_layers-1 if FLAGS.test_preprocess else FLAGS.num_layers
 
 # Define placeholders
 placeholders = {
@@ -67,16 +72,13 @@ placeholders = {
                for l in range(L+1)],
     'labels': tf.placeholder(tf.float32, shape=(None, labels.shape[1]), 
               name='labels'),
-    'dropout': tf.placeholder_with_default(0., shape=(), name='dropout'),
-    'alpha': tf.placeholder(tf.float32, shape=(), name='alpha')
+    'dropout': tf.placeholder_with_default(0., shape=(), name='dropout')
 }
 
 t = time()
 print('Building model...')
-if FLAGS.alpha == -1:
-    model = VRGCN
-else:
-    model = PlainGCN
+train_model = VRGCN if FLAGS.cv else PlainGCN
+test_model  = VRGCN if FLAGS.cv else PlainGCN
 
 def model_func(model, nbr_features, adj, preprocess, is_training):
     return model(FLAGS.num_layers, preprocess, placeholders, 
@@ -84,11 +86,10 @@ def model_func(model, nbr_features, adj, preprocess, is_training):
                  adj, multitask=multitask, is_training=is_training)
 
 create_model = tf.make_template('model', model_func)
-train_model  = create_model(model,    nbr_features=train_features, adj=train_adj, 
-                                      preprocess=FLAGS.preprocess, is_training=True)
-test_model   = create_model(PlainGCN, nbr_features=test_features, adj=full_adj,
-                                      preprocess=True, is_training=False)
-print(type(train_model), type(test_model))
+train_model  = create_model(train_model, nbr_features=train_features, adj=train_adj, 
+                                         preprocess=FLAGS.preprocess, is_training=True)
+test_model   = create_model(test_model,  nbr_features=test_features, adj=full_adj,
+                                         preprocess=FLAGS.test_preprocess, is_training=False)
 
 print('Finised in {} seconds'.format(time()-t))
 
@@ -115,7 +116,6 @@ def evaluate(data):
         end = min(start+FLAGS.test_batch_size, N)
         batch = data[start:end]
         feed_dict = eval_sch.batch(batch)
-        feed_dict[placeholders['alpha']] = 1.0
 
         los, acc, prd = test_model.run_one_step(sess, feed_dict)
         batch_size = prd.shape[0]
@@ -166,7 +166,6 @@ def SGDTrain():
             if feed_dict==None:
                 break
             feed_dict[placeholders['dropout']] = FLAGS.dropout
-            feed_dict[placeholders['alpha']] = 1.0 if epoch==0 else FLAGS.alpha
             amt_data += feed_dict[placeholders['fields'][0]].shape[0]
 
             # Training step
@@ -214,7 +213,6 @@ def Analyze():
     for i in range(full_times):
         feed_dict = eval_sch.batch(batch)
         feed_dict[placeholders['dropout']] = FLAGS.dropout
-        feed_dict[placeholders['alpha']] = FLAGS.alpha
         pred, grad = model.get_pred_and_grad(sess, feed_dict)
         full_preds.add(pred)
         for j in range(num_vars):
@@ -230,7 +228,6 @@ def Analyze():
         feed_dict = train_sch.batch(batch)
         feed_dict[placeholders['dropout']] = FLAGS.dropout
         feed_dict[placeholders['is_training']] = True
-        feed_dict[placeholders['alpha']] = FLAGS.alpha
         pred, grad = model.get_pred_and_grad(sess, feed_dict, is_training=True)
         part_preds.add(pred)
         for j in range(num_vars):
