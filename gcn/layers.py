@@ -114,8 +114,9 @@ class Dense(Layer):
         if self.bias:
             output += self.vars['bias']
 
-        if self.norm:
-            output = layers.layer_norm(output)
+        with tf.variable_scope(self.name + '_vars'):
+            if self.norm:
+                output = layers.layer_norm(output)
 
         return self.act(output)
 

@@ -13,7 +13,7 @@ FLAGS = flags.FLAGS
 
 class Model(object):
     def __init__(self, **kwargs):
-        allowed_kwargs = {'name', 'logging', 'multitask'}
+        allowed_kwargs = {'name', 'logging', 'multitask', 'is_training'}
         for kwarg in kwargs.keys():
             assert kwarg in allowed_kwargs, 'Invalid keyword argument: ' + kwarg
         name = kwargs.get('name')
@@ -43,8 +43,10 @@ class Model(object):
         self.history_ops = []
         self.aggregators = []
 
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate, 
-                                                beta1=FLAGS.beta1, beta2=FLAGS.beta2)
+        self.is_training = kwargs.get('is_training', True)
+        if self.is_training:
+            self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate, 
+                                                    beta1=FLAGS.beta1, beta2=FLAGS.beta2)
 
     def _preprocess(self):
         raise NotImplementedError
@@ -136,10 +138,9 @@ class Model(object):
         self._preprocess()
 
         """ Wrapper for _build() """
-        with tf.variable_scope(self.name):
-            self._build_history()
-            self._build_aggregators()
-            self._build()
+        self._build_history()
+        self._build_aggregators()
+        self._build()
 
         self.activations.append(self.inputs)
         for layer in self.layers:
@@ -158,7 +159,8 @@ class Model(object):
         self._predict()
 
         # Store model variables for easy access
-        variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
+        # Trainable variables + layer norm variables
+        variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
         self.vars = variables
         print('Model variables')
         for k in self.vars:
@@ -168,11 +170,15 @@ class Model(object):
         self._loss()
         self._accuracy()
 
-        self.opt_op = [self.optimizer.minimize(self.loss)]
-        self.train_op = []
-        with tf.control_dependencies(self.opt_op):
+        if self.is_training:
+            self.opt_op = [self.optimizer.minimize(self.loss)]
+            self.train_op = []
+            with tf.control_dependencies(self.opt_op):
+                self.train_op = tf.group(*self.update_history)
+            self.test_op = tf.group(*self.update_history)
+        else:
             self.train_op = tf.group(*self.update_history)
-        self.test_op = tf.group(*self.update_history)
+            self.test_op  = self.train_op
         self.grads  = tf.gradients(self.loss, self.vars)
 
     def _predict(self):
@@ -222,6 +228,7 @@ class GCN(Model):
         self.train_adj = train_adj
         self.test_adj  = test_adj
         self.build()
+        self.init_counts()
 
     def init(self, sess):
         pass

@@ -8,7 +8,6 @@ import tensorflow as tf
 from gcn.utils import *
 from gcn.plaingcn import PlainGCN
 from gcn.vrgcn import VRGCN
-from gcn.mlp import NeighbourMLP
 from scheduler import PyScheduler
 from tensorflow.contrib.opt import ScipyOptimizerInterface
 import scipy.sparse as sp
@@ -58,8 +57,7 @@ print('{} training data, {} validation data, {} testing data.'.format(
 
 multitask    = True if FLAGS.dataset=='ppi' else False
 L            = FLAGS.num_layers-1 if FLAGS.preprocess else FLAGS.num_layers
-if FLAGS.model == 'mlp':
-    L = 0
+test_L       = FLAGS.num_layers-1
 
 # Define placeholders
 placeholders = {
@@ -76,24 +74,27 @@ placeholders = {
 
 t = time()
 print('Building model...')
-if FLAGS.model == 'graphsage':
-    if FLAGS.alpha == -1:
-        model = VRGCN
-    else:
-        model = PlainGCN
+if FLAGS.alpha == -1:
+    model = VRGCN
 else:
-    model = NeighbourMLP
+    model = PlainGCN
 
-model = model(FLAGS.num_layers, FLAGS.preprocess, placeholders, 
-              features, train_features, test_features,
-              train_adj, full_adj, multitask=multitask)
+def model_func(model, preprocess, is_training):
+    return model(FLAGS.num_layers, preprocess, placeholders, 
+                 features, train_features, test_features,
+                 train_adj, full_adj, multitask=multitask, is_training=is_training)
+
+create_model = tf.make_template('model', model_func)
+train_model  = create_model(model,   preprocess=FLAGS.preprocess, is_training=True)
+test_model   = create_model(PlainGCN, preprocess=True, is_training=False)
+print(type(train_model), type(test_model))
 
 print('Finised in {} seconds'.format(time()-t))
 
 train_degrees   = np.array([FLAGS.degree]*L, dtype=np.int32)
-test_degrees    = np.array([FLAGS.test_degree]*L, dtype=np.int32)
+test_degrees    = np.array([FLAGS.test_degree]*test_L, dtype=np.int32)
 train_sch = PyScheduler(train_adj, labels, L, train_degrees, placeholders, train_d)
-eval_sch  = PyScheduler(full_adj,  labels, L, test_degrees,  placeholders)
+eval_sch  = PyScheduler(full_adj,  labels, test_L, test_degrees,  placeholders)
 
 
 # Initialize session
@@ -108,7 +109,6 @@ def evaluate(data):
 
     t_test = time()
     N = len(data)
-    model.backup_model(sess)
 
     for start in range(0, N, FLAGS.test_batch_size):
         end = min(start+FLAGS.test_batch_size, N)
@@ -117,13 +117,12 @@ def evaluate(data):
         feed_dict[placeholders['is_training']] = False
         feed_dict[placeholders['alpha']] = 1.0
 
-        los, acc, prd = model.run_one_step(sess, feed_dict, is_training=False)
+        los, acc, prd = test_model.run_one_step(sess, feed_dict, is_training=False)
         batch_size = prd.shape[0]
         total_loss += los * batch_size
         total_acc  += acc * batch_size
         total_pred.append(prd)
         total_labs.append(feed_dict[placeholders['labels']])
-    model.restore_model(sess)
 
     total_loss /= N
     total_acc  /= N
@@ -145,10 +144,10 @@ def SGDTrain():
     amt_data = 0
 
     if FLAGS.load:
-        model.load(sess)
+        train_model.load(sess)
+        test_model.load(sess)
         return 
 
-    model.init(sess)
     print('Start training...')
 
     # Train model
@@ -156,7 +155,7 @@ def SGDTrain():
         train_sch.shuffle()
     
         t = time()
-        model.init_counts()
+        train_model.init_counts()
         iter = 0
         tsch = 0
         while True:
@@ -172,7 +171,7 @@ def SGDTrain():
             amt_data += feed_dict[placeholders['fields'][0]].shape[0]
 
             # Training step
-            outs = model.run_one_step(sess, feed_dict, is_training=True)
+            outs = train_model.run_one_step(sess, feed_dict, is_training=True)
             avg_loss.add(outs[1])
             avg_acc .add(outs[2])
 
@@ -193,7 +192,7 @@ def SGDTrain():
               "data = {}".format(amt_data))
         G = float(2**30)
         print('TF time = {}, g time = {}, G GFLOPS = {}, NN GFLOPS = {}, field sizes = {}, adj sizes = {}, fadj sizes = {}'.format(
-              model.run_t, model.g_t, model.g_ops/G, model.nn_ops/G, model.field_sizes, model.adj_sizes, model.fadj_sizes))
+              train_model.run_t, train_model.g_t, train_model.g_ops/G, train_model.nn_ops/G, train_model.field_sizes, train_model.adj_sizes, train_model.fadj_sizes))
     
         if epoch > FLAGS.early_stopping and cost_val[-1] > np.mean(cost_val[-(FLAGS.early_stopping+1):-1]):
             print("Early stopping...")
@@ -202,7 +201,7 @@ def SGDTrain():
             break
     
     print("Optimization Finished!")
-    model.save(sess)
+    train_model.save(sess)
     
 
 def Analyze():
