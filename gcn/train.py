@@ -57,7 +57,6 @@ print('{} training data, {} validation data, {} testing data.'.format(
     len(train_d), len(val_d), len(test_d)))
 
 multitask    = True if FLAGS.dataset=='ppi' else False
-sparse_input = isinstance(features, sp.csr.csr_matrix)
 L            = FLAGS.num_layers-1 if FLAGS.preprocess else FLAGS.num_layers
 if FLAGS.model == 'mlp':
     L = 0

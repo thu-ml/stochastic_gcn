@@ -90,20 +90,11 @@ class Model(object):
             self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
 
-    def get_variable(self, name, value):
-        if isinstance(value, sp.coo_matrix):
-            value = sparse_to_tuple(value)
-            indices = tf.Variable(tf.constant(value[0]), name=name+'_indices', trainable=False)
-            values  = tf.Variable(tf.constant(value[1]), name=name+'_values', trainable=False)
-            dense_shape = tf.Variable(tf.constant(value[2]), name=name+'_dense_shape', trainable=False)
-            return tf.sparse_reorder(tf.SparseTensor(indices, values, dense_shape))
+    def get_ph(self, name):
+        if self.sparse_input:
+            return tf.sparse_placeholder(tf.float32, name=name)
         else:
-            value_var = tf.Variable(tf.zeros(value.shape, dtype=tf.float32), name=name, trainable=False)
-            value_ph = tf.placeholder(tf.float32)
-            value_init = tf.assign(value_var, value_ph)
-            feed_dict = {value_ph: value}
-            print('Variable size = {} GB'.format(value.size * 4 / 1024.0 / 1024.0 / 1024.0))
-            return value_var, value_init, feed_dict
+            return tf.placeholder(tf.float32, name=name)
 
 
     def average_model(self, values):
@@ -128,14 +119,14 @@ class Model(object):
 
     def build(self):
         self.sparse_mm     = self.sparse_input
-        if self.sparse_input:
+        self.inputs_ph     = self.get_ph('input')
+        self.inputs        = tf.sparse_reorder(self.inputs_ph)
+        if self.sparse_input and not self.preprocess:
             print('Warning: we do not support sparse input without pre-processing. Converting to dense...')
             self.inputs    = tf.sparse_to_dense(self.inputs.indices, 
                                                  self.inputs.dense_shape,
                                                  self.inputs.values)
             self.sparse_mm = False
-
-        self.inputs = tf.gather(self.inputs, self.placeholders['fields'][0])
 
         self.num_data      = self.train_adj.shape[0]
 
@@ -221,29 +212,19 @@ class GCN(Model):
         self_dim       = 0 if FLAGS.normalization=='gcn' else self.input_dim
         if preprocess:
             self_features  = features[:,:self_dim]
-            stacker        = sp.hstack if self.sparse_input else np.hstack
-            train_features = stacker((self_features, train_features))
-            test_features  = stacker((self_features, test_features))
+            stacker        = lambda x: sp.hstack(x).tocsr() if self.sparse_input else np.hstack
+            self.train_features = stacker((self_features, train_features))
+            self.test_features  = stacker((self_features, test_features))
         else:
-            train_features = features
-            test_features  = features
-
-        train_features, trainop, trainf = self.get_variable('train_features', train_features)
-        test_features, testop, testf    = self.get_variable('test_features',  test_features)
-        self.init_ops = [trainop, testop]
-        self.init_dict = trainf
-        self.init_dict.update(testf)
-
-        self.inputs = tf.cond(self.placeholders['is_training'], 
-                              lambda: train_features,
-                              lambda: test_features)
+            self.train_features = features
+            self.test_features  = features
 
         self.train_adj = train_adj
         self.test_adj  = test_adj
         self.build()
 
     def init(self, sess):
-        sess.run(self.init_ops, self.init_dict)
+        pass
 
     def _preprocess(self):
         if self.preprocess:

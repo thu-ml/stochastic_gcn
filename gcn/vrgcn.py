@@ -38,10 +38,17 @@ class VRGCN(GCN):
             self.history_mean_ph.append(tf.sparse_tensor_dense_matmul(fadj, history))
 
     def get_data(self, feed_dict, is_training):
+        input = self.train_features if is_training else self.test_features
+        f0    = feed_dict[self.placeholders['fields'][0]]
+        if self.sparse_input:
+            input = slice(input, f0)
+        else:                           # TODO dense slicing is slow?
+            input = input[f0,:]
+        feed_dict[self.inputs_ph] = input
+
         # Read history
         for l in range(self.L):
             ofield = feed_dict[self.placeholders['fields'][l+1]]
-            #fadj   = self.train_adj[ofield] if is_training else self.test_adj[ofield]
             fadj = slice(self.train_adj, ofield) if is_training else slice(self.test_adj, ofield)
             adj = feed_dict[self.placeholders['adj'][l]][0]
             feed_dict[self.placeholders['fadj'][l]] = fadj

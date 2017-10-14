@@ -6,6 +6,7 @@ import scipy.sparse as sp
 from gcn.utils import sparse_to_tuple, dropout
 from gcn.models import GCN
 import numpy as np
+from history import slice
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
@@ -23,6 +24,14 @@ class PlainGCN(GCN):
         pass
 
     def get_data(self, feed_dict, is_training):
+        input = self.train_features if is_training else self.test_features
+        f0    = feed_dict[self.placeholders['fields'][0]]
+        if self.sparse_input:
+            input = slice(input, f0)
+        else:                           # TODO dense slicing is slow?
+            input = input[f0,:]
+        feed_dict[self.inputs_ph] = input
+        
         for l in range(self.L):
             dim = self.agg0_dim if l==0 else FLAGS.hidden1
             adj = feed_dict[self.placeholders['adj'][l]][0]
