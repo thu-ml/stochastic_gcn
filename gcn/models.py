@@ -120,7 +120,7 @@ class Model(object):
     def build(self):
         self.sparse_mm     = self.sparse_input
         self.inputs_ph     = self.get_ph('input')
-        self.inputs        = tf.sparse_reorder(self.inputs_ph)
+        self.inputs        = tf.sparse_reorder(self.inputs_ph) if self.sparse_input else self.inputs_ph
         if self.sparse_input and not self.preprocess:
             print('Warning: we do not support sparse input without pre-processing. Converting to dense...')
             self.inputs    = tf.sparse_to_dense(self.inputs.indices, 
@@ -212,7 +212,7 @@ class GCN(Model):
         self_dim       = 0 if FLAGS.normalization=='gcn' else self.input_dim
         if preprocess:
             self_features  = features[:,:self_dim]
-            stacker        = lambda x: sp.hstack(x).tocsr() if self.sparse_input else np.hstack
+            stacker        = (lambda x: sp.hstack(x).tocsr()) if self.sparse_input else np.hstack
             self.train_features = stacker((self_features, train_features))
             self.test_features  = stacker((self_features, test_features))
         else:
