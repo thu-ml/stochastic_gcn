@@ -14,17 +14,17 @@ FLAGS = flags.FLAGS
 
 class PlainGCN(GCN):
     def __init__(self, L, preprocess, placeholders, 
-                 features, train_features, test_features, train_adj, test_adj,
+                 features, nbr_features, adj,
                  **kwargs):
         super(PlainGCN, self).__init__(L, preprocess, placeholders, 
-                                    features, train_features, test_features,
-                                    train_adj, test_adj, **kwargs)
+                                    features, nbr_features,
+                                    adj, **kwargs)
 
     def _build_history(self):
         pass
 
-    def get_data(self, feed_dict, is_training):
-        input = self.train_features if is_training else self.test_features
+    def get_data(self, feed_dict):
+        input = self.features 
         f0    = feed_dict[self.placeholders['fields'][0]]
         if self.sparse_input:
             input = slice(input, f0)
@@ -43,14 +43,14 @@ class PlainGCN(GCN):
         for c, l in self.layer_comp:
             self.nn_ops += c * feed_dict[self.placeholders['fields'][l]].size * 4
 
-    def run_one_step(self, sess, feed_dict, is_training):
+    def run_one_step(self, sess, feed_dict):
         t = time()
-        self.get_data(feed_dict, is_training)
+        self.get_data(feed_dict)
         self.g_t += time() - t
 
         # Run
         t = time()
-        if is_training:
+        if self.is_training:
             outs = sess.run([self.train_op, self.loss, self.accuracy], feed_dict=feed_dict)
         else:
             outs, _ = sess.run([[self.loss, self.accuracy, self.pred], self.test_op], feed_dict=feed_dict)
@@ -59,8 +59,8 @@ class PlainGCN(GCN):
         return outs
 
 
-    def get_pred_and_grad(self, sess, feed_dict, is_training):
-        self.get_data(feed_dict, is_training)
+    def get_pred_and_grad(self, sess, feed_dict):
+        self.get_data(feed_dict)
 
         # Run
         pred, grads = sess.run([self.pred, self.grads], 

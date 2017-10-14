@@ -14,11 +14,11 @@ FLAGS = flags.FLAGS
 
 class VRGCN(GCN):
     def __init__(self, L, preprocess, placeholders, 
-                 features, train_features, test_features, train_adj, test_adj,
+                 features, nbr_features, adj, 
                  **kwargs):
         super(VRGCN, self).__init__(L, preprocess, placeholders, 
-                                    features, train_features, test_features,
-                                    train_adj, test_adj, **kwargs)
+                                    features, nbr_features,
+                                    adj, **kwargs)
 
     def _build_history(self):
         # Create history after each aggregation
@@ -37,8 +37,8 @@ class VRGCN(GCN):
             self.history_ph     .append(tf.gather(history, ifield))
             self.history_mean_ph.append(tf.sparse_tensor_dense_matmul(fadj, history))
 
-    def get_data(self, feed_dict, is_training):
-        input = self.train_features if is_training else self.test_features
+    def get_data(self, feed_dict):
+        input = self.features
         f0    = feed_dict[self.placeholders['fields'][0]]
         if self.sparse_input:
             input = slice(input, f0)
@@ -49,7 +49,7 @@ class VRGCN(GCN):
         # Read history
         for l in range(self.L):
             ofield = feed_dict[self.placeholders['fields'][l+1]]
-            fadj = slice(self.train_adj, ofield) if is_training else slice(self.test_adj, ofield)
+            fadj = slice(self.adj, ofield)
             adj = feed_dict[self.placeholders['adj'][l]][0]
             feed_dict[self.placeholders['fadj'][l]] = fadj
 
@@ -63,14 +63,14 @@ class VRGCN(GCN):
         for c, l in self.layer_comp:
             self.nn_ops += c * feed_dict[self.placeholders['fields'][l]].size * 4
 
-    def run_one_step(self, sess, feed_dict, is_training):
+    def run_one_step(self, sess, feed_dict):
         t = time()
-        self.get_data(feed_dict, is_training)
+        self.get_data(feed_dict)
         self.g_t += time() - t
 
         # Run
         t = time()
-        if is_training:
+        if self.is_training:
             outs = sess.run([self.train_op, self.loss, self.accuracy], feed_dict=feed_dict)
         else:
             outs, _ = sess.run([[self.loss, self.accuracy, self.pred], self.test_op], feed_dict=feed_dict)
@@ -78,8 +78,8 @@ class VRGCN(GCN):
 
         return outs
 
-    def get_pred_and_grad(self, sess, feed_dict, is_training):
-        self.get_data(feed_dict, is_training)
+    def get_pred_and_grad(self, sess, feed_dict):
+        self.get_data(feed_dict)
 
         # Run
         pred, grads = sess.run([self.pred, self.grads], 
@@ -94,7 +94,7 @@ class VRGCN(GCN):
             ifield = self.placeholders['fields'][l]
             agg = VRAggregator(adjs[l], self.history_ph[l],
                               self.history_mean_ph[l], 
-                              self.placeholders['is_training'],
+                              self.is_training,
                               name='agg%d'%l)
             self.aggregators.append(agg)
 

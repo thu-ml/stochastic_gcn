@@ -200,18 +200,16 @@ class VRAggregator(Layer):
 
 
 class Dropout(Layer):
-    def __init__(self, keep_prob, is_training, **kwargs):
+    def __init__(self, keep_prob, **kwargs):
         super(Dropout, self).__init__(**kwargs)
 
         self.keep_prob   = keep_prob
-        self.is_training = is_training
 
     def _call(self, inputs):
         if isinstance(inputs, tf.SparseTensor):
             return sparse_dropout(inputs, self.keep_prob)
         else:
-            return layers.dropout(inputs, self.keep_prob, 
-                                      is_training=self.is_training)
+            return tf.nn.dropout(inputs, self.keep_prob)
 
 
 class Normalize(Layer):

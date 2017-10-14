@@ -68,7 +68,6 @@ placeholders = {
     'labels': tf.placeholder(tf.float32, shape=(None, labels.shape[1]), 
               name='labels'),
     'dropout': tf.placeholder_with_default(0., shape=(), name='dropout'),
-    'is_training': tf.placeholder(tf.bool, shape=(), name='is_training'),
     'alpha': tf.placeholder(tf.float32, shape=(), name='alpha')
 }
 
@@ -79,14 +78,16 @@ if FLAGS.alpha == -1:
 else:
     model = PlainGCN
 
-def model_func(model, preprocess, is_training):
+def model_func(model, nbr_features, adj, preprocess, is_training):
     return model(FLAGS.num_layers, preprocess, placeholders, 
-                 features, train_features, test_features,
-                 train_adj, full_adj, multitask=multitask, is_training=is_training)
+                 features, nbr_features,
+                 adj, multitask=multitask, is_training=is_training)
 
 create_model = tf.make_template('model', model_func)
-train_model  = create_model(model,   preprocess=FLAGS.preprocess, is_training=True)
-test_model   = create_model(PlainGCN, preprocess=True, is_training=False)
+train_model  = create_model(model,    nbr_features=train_features, adj=train_adj, 
+                                      preprocess=FLAGS.preprocess, is_training=True)
+test_model   = create_model(PlainGCN, nbr_features=test_features, adj=full_adj,
+                                      preprocess=True, is_training=False)
 print(type(train_model), type(test_model))
 
 print('Finised in {} seconds'.format(time()-t))
@@ -114,10 +115,9 @@ def evaluate(data):
         end = min(start+FLAGS.test_batch_size, N)
         batch = data[start:end]
         feed_dict = eval_sch.batch(batch)
-        feed_dict[placeholders['is_training']] = False
         feed_dict[placeholders['alpha']] = 1.0
 
-        los, acc, prd = test_model.run_one_step(sess, feed_dict, is_training=False)
+        los, acc, prd = test_model.run_one_step(sess, feed_dict)
         batch_size = prd.shape[0]
         total_loss += los * batch_size
         total_acc  += acc * batch_size
@@ -166,12 +166,11 @@ def SGDTrain():
             if feed_dict==None:
                 break
             feed_dict[placeholders['dropout']] = FLAGS.dropout
-            feed_dict[placeholders['is_training']] = True
             feed_dict[placeholders['alpha']] = 1.0 if epoch==0 else FLAGS.alpha
             amt_data += feed_dict[placeholders['fields'][0]].shape[0]
 
             # Training step
-            outs = train_model.run_one_step(sess, feed_dict, is_training=True)
+            outs = train_model.run_one_step(sess, feed_dict)
             avg_loss.add(outs[1])
             avg_acc .add(outs[2])
 
@@ -215,9 +214,8 @@ def Analyze():
     for i in range(full_times):
         feed_dict = eval_sch.batch(batch)
         feed_dict[placeholders['dropout']] = FLAGS.dropout
-        feed_dict[placeholders['is_training']] = True
         feed_dict[placeholders['alpha']] = FLAGS.alpha
-        pred, grad = model.get_pred_and_grad(sess, feed_dict, is_training=True)
+        pred, grad = model.get_pred_and_grad(sess, feed_dict)
         full_preds.add(pred)
         for j in range(num_vars):
             full_grads[j].add(grad[j])
