@@ -164,7 +164,7 @@ def load_gcn_data(dataset_str):
         train_adj = _get_adj(train_v, train_coords)
         full_adj  = _get_adj(full_v,  full_coords)
         feats = sp.csr_matrix((feats[0], feats[1], feats[2]), 
-                              shape=feats[-1])
+                              shape=feats[-1], dtype=np.float32)
 
         train_feats = train_adj.dot(feats)
         test_feats  = full_adj.dot(feats)

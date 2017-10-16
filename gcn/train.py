@@ -51,6 +51,10 @@ flags.DEFINE_bool('layer_norm', False, 'Layer normalization')
 flags.DEFINE_float('polyak_decay', 0, 'Decay for model averaging')
 flags.DEFINE_bool('load', False, 'Load the model')
 
+flags.DEFINE_integer('seed', 1, 'Random seed')
+
+tf.set_random_seed(FLAGS.seed)
+np.random.seed(FLAGS.seed)
 
 # Load data
 num_data, train_adj, full_adj, features, train_features, test_features, labels, train_d, val_d, test_d = \

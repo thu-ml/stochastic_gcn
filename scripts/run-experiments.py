@@ -1,48 +1,33 @@
 import os, sys
 
-datasets    = ['cora', 'citeseer', 'pubmed', 'nell', 'ppi', 'reddit']
+datasets    = ['citeseer', 'ppi']
 gcn_datasets = set(['cora', 'citeseer', 'pubmed', 'nell'])
 preprocess  = ['True', 'False']
 dropout = [True, False]
-deg_alpha   = [(20, 1), (1, 1), (1, -1)]
+deg_cv   = [(20, False), (1, False), (1, True)]
 
 f = open('run.sh', 'w')
 for data in datasets:
     for pp in preprocess:
         for d in dropout:
-            for deg, a in deg_alpha:
-                # Dropout 
-                dropout_rate = 0
-                if d:
-                    if data in gcn_datasets:
-                        dropout_rate = 0.5
+            for deg, cv in deg_cv:
+                for run in range(10):
+                    # Dropout 
+                    dropout_str = ""
+                    if not d:
+                        dropout_str = "--dropout 0"
+    
+                    log_file = 'logs/{}_pp{}_dropout{}_deg{}_cv{}_run{}.log'.format(data, pp, d, deg, cv, run)
+                    if data in set(['cora', 'citeseer', 'pubmed', 'nell']):
+                        ndata  = 50000
+                        epochs = 400
+                    elif data == 'ppi':
+                        ndata  = int(1e7)
+                        epochs = 200
                     else:
-                        dropout_rate = 0.2
+                        ndata  = int(4e7)
+                        epochs = 30
 
-                log_file = 'logs/{}_pp{}_dropout{}_deg{}_a{}.log'.format(data, pp, dropout_rate, deg, a)
-
-                if data in set(['cora', 'citeseer', 'pubmed']):
                     command = \
-'stdbuf -o 0 python ../gcn/train.py \
---early_stopping=1000000 --data=50000 --epochs=400 \
---dataset={} --preprocess={} --degree={} --test_degree={} --alpha={} --dropout {} | tee {}'.format(
-            data, pp, deg, deg, a, dropout_rate, log_file)
-                elif data == 'nell':
-                    command = \
-'stdbuf -o 0 python ../gcn/train.py \
---early_stopping=1000000 --data=50000 --epochs=400 --hidden1 64 --weight_decay 1e-5 \
---dataset={} --preprocess={} --degree={} --test_degree={} --alpha={} --dropout {} | tee {}'.format(
-            data, pp, deg, deg, a, dropout_rate, log_file)
-                elif data == 'ppi':
-                    command = \
-'stdbuf -o 0 python ../gcn/train.py --normalization graphsage --weight_decay 0 --layer_norm --batch_size 512 --hidden1 512 --num_fc_layers 2 \
---early_stopping=1000000 --data=10000000 --epochs=200 \
---dataset={} --preprocess={} --degree={} --test_degree={} --alpha={} --dropout {} | tee {}'.format(
-            data, pp, deg, deg, a, dropout_rate, log_file)
-                else:
-                    command = \
-'stdbuf -o 0 python ../gcn/train.py --normalization graphsage --weight_decay 0 --layer_norm --batch_size 512 --hidden1 128 --num_fc_layers 2 \
---early_stopping=1000000 --data=40000000 --epochs=30 \
---dataset={} --preprocess={} --degree={} --test_degree={} --alpha={} --dropout {} | tee {}'.format(
-            data, pp, deg, deg, a, dropout_rate, log_file)
-                f.write(command+'\n')
+'stdbuf -o 0 sh config/{}.config --early_stopping=1000000 --data={} --epochs={} {} --preprocess={} --degree={} --cv={} --seed={} | tee {}'.format(data, ndata, epochs, dropout_str, pp, deg, cv, run, log_file)
+                    f.write(command+'\n')

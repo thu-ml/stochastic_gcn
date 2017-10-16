@@ -212,6 +212,26 @@ class Dropout(Layer):
             return tf.nn.dropout(inputs, self.keep_prob)
 
 
+class DenoisingDropout(Layer):
+    def __init__(self, keep_prob, **kwargs):
+        super(Dropout, self).__init__(**kwargs)
+
+        self.keep_prob   = keep_prob
+
+        with tf.variable_scope(self.name + '_vars'):
+            self.vars['encoder'] = glorot([input_dim, output_dim],
+                                          name='encoder')
+            self.vars['decoder'] = glorot([output_dim, input_dim],
+                                          name='decoder')
+
+    def _call(self, inputs):
+        dropout_input = tf.nn.dropout(inputs, self.keep_prob)
+        code          = dot(dropout_input, self.vars['encoder'])
+        recons        = dot(code, self.vars['decoder'])
+        loss          = tf.reduce_mean(tf.square(inputs-recons)) * FLAGS.denoise_factor
+        return dropout_input
+
+
 class Normalize(Layer):
     def __init__(self, **kwargs):
         super(Normalize, self).__init__(**kwargs)
