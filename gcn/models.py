@@ -161,8 +161,9 @@ class Model(object):
         for l in range(self.L):
             ifield = self.placeholders['fields'][l]
             if hasattr(self.aggregators[l], 'new_history'):
-                self.update_history.append(tf.scatter_update(
-                    self.history[l], ifield, self.aggregators[l].new_history).op)
+                new_history = self.aggregators[l].new_history
+                self.update_history.extend([tf.scatter_update(h, ifield, nh).op
+                         for h, nh in zip(self.history[l], new_history)])
 
         self._predict()
 

@@ -25,10 +25,15 @@ class VRGCN(GCN):
         self.history         = []
         for i in range(self.L):
             dims = self.agg0_dim if i==0 else FLAGS.hidden1
-            history = tf.Variable(tf.zeros((self.num_data, dims), dtype=np.float32), 
-                                  trainable=False, name='history_{}'.format(i))
-            self.history.append(history)
-            print('History size = {} GB'.format(self.num_data*dims*4/1024.0/1024.0/1024.0))
+            n_history = 2 if FLAGS.det_dropout else 1
+            histories = []
+            for h in range(n_history):
+                history = tf.Variable(tf.zeros((self.num_data, dims), dtype=np.float32), 
+                                      trainable=False, name='history_{}_{}'.format(i, h))
+                histories.append(history)
+
+            self.history.append(histories)
+            print('History size = {} GB'.format(self.num_data*dims*4*n_history/1024.0/1024.0/1024.0))
             
 
     def get_data(self, feed_dict):

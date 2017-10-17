@@ -277,17 +277,46 @@ class VRAggregator(Layer):
         ofield_size = tf.cast(self.adj.dense_shape[0], tf.int32)
         dims        = tf.cast(tf.shape(inputs)[1], tf.int32)
 
-        a_self      = inputs[:tf.cast(ofield_size, tf.int32)]
-        a_neighbour_current = dot(self.adj, inputs, sparse=True)
-        a_neighbour_history = dot(self.adj, tf.gather(self.history, self.ifield), sparse=True)
-        a_history_mean      = dot(self.fadj, self.history, sparse=True)
-        a_neighbour         = a_neighbour_current - a_neighbour_history + a_history_mean
-        self.new_history    = inputs
+        if isinstance(inputs, tuple):
+            mu, var  = inputs
+            mu_self  = mu[:ofield_size]
+            var_self = var[:ofield_size]
 
-        if FLAGS.normalization == 'gcn':
-            return a_neighbour
+            # TODO inefficient
+            mu_history, var_history = self.history
+            sgm_history = tf.sqrt(var_history)
+
+            mu_subhistory  = tf.gather(mu_history, self.ifield, name='mu_sub')
+            sgm_subhistory = tf.gather(sgm_history, self.ifield, name='sgm_sub')
+            
+            delta_mu    = mu - mu_subhistory
+            delta_sigma = tf.sqrt(var) - sgm_subhistory
+
+            mu_neighbour  = dot(self.adj, delta_mu, sparse=True) + dot(self.fadj, mu_history, sparse=True)
+            # TODO approximate
+            var_neighbour = dot(tf.square(self.adj), tf.square(delta_sigma), sparse=True) + \
+                            dot(tf.square(self.fadj), var_history, sparse=True)
+
+            self.new_history = (mu, var)
+
+            if FLAGS.normalization == 'gcn':
+                return (mu_neighbour, var_neighbour)
+            else:
+                return (tf.concat((mu_self, mu_neighbour), axis=1),
+                        tf.concat((var_self, var_neighbour), axis=1))
         else:
-            return tf.concat((a_self, a_neighbour), axis=1)
+            history = self.history[0]
+            a_self      = inputs[:ofield_size]
+            a_neighbour_current = dot(self.adj, inputs, sparse=True)
+            a_neighbour_history = dot(self.adj, tf.gather(history, self.ifield), sparse=True)
+            a_history_mean      = dot(self.fadj, history, sparse=True)
+            a_neighbour         = a_neighbour_current - a_neighbour_history + a_history_mean
+            self.new_history    = [inputs]
+
+            if FLAGS.normalization == 'gcn':
+                return a_neighbour
+            else:
+                return tf.concat((a_self, a_neighbour), axis=1)
 
 
 class Dropout(Layer):
