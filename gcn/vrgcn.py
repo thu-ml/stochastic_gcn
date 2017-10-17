@@ -22,8 +22,6 @@ class VRGCN(GCN):
 
     def _build_history(self):
         # Create history after each aggregation
-        self.history_ph      = []
-        self.history_mean_ph = []
         self.history         = []
         for i in range(self.L):
             dims = self.agg0_dim if i==0 else FLAGS.hidden1
@@ -32,10 +30,6 @@ class VRGCN(GCN):
             self.history.append(history)
             print('History size = {} GB'.format(self.num_data*dims*4/1024.0/1024.0/1024.0))
             
-            ifield = self.placeholders['fields'][i]
-            fadj   = self.placeholders['fadj'][i]
-            self.history_ph     .append(tf.gather(history, ifield))
-            self.history_mean_ph.append(tf.sparse_tensor_dense_matmul(fadj, history))
 
     def get_data(self, feed_dict):
         input = self.features
@@ -90,11 +84,12 @@ class VRGCN(GCN):
 
     def _build_aggregators(self):
         adjs   = self.placeholders['adj']
+        fadjs  = self.placeholders['fadj']
         for l in range(self.L):
-            ifield = self.placeholders['fields'][l]
-            agg = VRAggregator(adjs[l], self.history_ph[l],
-                              self.history_mean_ph[l], 
-                              self.is_training,
-                              name='agg%d'%l)
+            ifield  = self.placeholders['fields'][l]
+            history = self.history[l]
+            agg = VRAggregator(adjs[l], fadjs[l],
+                               ifield,
+                               history, name='agg%d'%l)
             self.aggregators.append(agg)
 

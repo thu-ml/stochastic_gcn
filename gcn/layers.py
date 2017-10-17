@@ -265,22 +265,23 @@ class EMAAggregator(Layer):
 
 
 class VRAggregator(Layer):
-    def __init__(self, adj, history, history_mean, is_training, **kwargs):
+    def __init__(self, adj, fadj, ifield, history, **kwargs):
         super(VRAggregator, self).__init__(**kwargs)
 
         self.adj           = adj
+        self.fadj          = fadj
+        self.ifield        = ifield
         self.history       = history
-        self.history_mean  = history_mean
-        self.is_training   = is_training
 
     def _call(self, inputs):
-        ofield_size = self.adj.dense_shape[0]
+        ofield_size = tf.cast(self.adj.dense_shape[0], tf.int32)
+        dims        = tf.cast(tf.shape(inputs)[1], tf.int32)
+
         a_self      = inputs[:tf.cast(ofield_size, tf.int32)]
         a_neighbour_current = dot(self.adj, inputs, sparse=True)
-
-        print('History size = {}'.format(self.history.get_shape()))
-        a_neighbour_history = dot(self.adj, self.history, sparse=True)
-        a_neighbour         = a_neighbour_current - a_neighbour_history + self.history_mean
+        a_neighbour_history = dot(self.adj, tf.gather(self.history, self.ifield), sparse=True)
+        a_history_mean      = dot(self.fadj, self.history, sparse=True)
+        a_neighbour         = a_neighbour_current - a_neighbour_history + a_history_mean
         self.new_history    = inputs
 
         if FLAGS.normalization == 'gcn':
