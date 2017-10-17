@@ -176,7 +176,7 @@ class DetDropoutFC(Layer):
         # Norm
         if self.norm:
             mean, variance = tf.nn.moments(mu, axes=[1], keep_dims=True)
-            mu  = tf.nn.batch_normalization(mu, mean, variance, self.vars['offset'], self.vars['scale'], 1e-9)
+            mu  = tf.nn.batch_normalization(mu, mean, variance, self.vars['offset'], self.vars['scale'], 1e-10)
             var = var * (tf.square(self.vars['scale']) / variance)
             self.log_values.append((mu, var))
 
@@ -185,11 +185,14 @@ class DetDropoutFC(Layer):
         alpha = -mu / sigma
         phi   = self.normal.prob(alpha)
         Phi   = self.normal.cdf(alpha)
-        Z     = 1 - Phi + 1e-9
+        Z     = self.normal.cdf(-alpha) + 1e-10
+        phiZ  = phi/Z
         
-        m     = mu + sigma * phi / Z
+        m     = mu + sigma * phiZ
         mu    = Z * m
-        var   = Z * (1-Z) * tf.square(m)        # TODO approximation
+        #var   = Z * Phi * tf.square(m)        # TODO approximation
+        var   = tf.nn.relu(var * (1 + alpha*phiZ - tf.square(phiZ))) + 1e-10
+        var   = Z * var + Z*Phi*tf.square(mu)
         self.log_values.append((mu, var))
         return mu, var
 
