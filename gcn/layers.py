@@ -1,6 +1,7 @@
 from gcn.inits import *
 import tensorflow as tf
 from tensorflow.contrib import layers
+from tensorflow.contrib.distributions import Normal
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
@@ -83,6 +84,14 @@ class Layer(object):
             tf.summary.histogram(self.name + '/vars/' + var, self.vars[var])
 
 
+def MyLayerNorm(x):
+    mean, variance = tf.nn.moments(x, axes=[1], keep_dims=True)
+    
+    offset = zeros([1, x.get_shape()[1]], name='offset')
+    scale  = ones([1, x.get_shape()[1]], name='scale')
+    return tf.nn.batch_normalization(x, mean, variance, offset, scale, 1e-9)
+
+
 class Dense(Layer):
     """Dense layer."""
     def __init__(self, input_dim, output_dim, placeholders, sparse_inputs=False,
@@ -116,9 +125,57 @@ class Dense(Layer):
 
         with tf.variable_scope(self.name + '_vars'):
             if self.norm:
-                output = layers.layer_norm(output)
+                #output = layers.layer_norm(output)
+                output = MyLayerNorm(output)
 
         return self.act(output)
+
+
+class DetDropoutFC(Layer):
+    """X->Dropout->Linear->LayerNorm->ReLU->mean"""
+    def __init__(self, keep_prob, input_dim, output_dim, placeholders, sparse_inputs=False,
+                 norm=True, **kwargs):
+        # TODO sparse inputs
+        super(DetDropoutFC, self).__init__(*kwargs)
+        self.sparse_inputs = sparse_inputs
+        self.norm = norm
+        self.keep_prob = keep_prob
+        self.normal = Normal(0.0, 1.0)
+
+        with tf.variable_scope(self.name + '_vars'):
+            self.vars['weights'] = glorot([input_dim, output_dim],
+                                          name='weights')
+            if norm:
+                self.vars['offset'] = zeros([1, x.get_shape()[1]], name='offset')
+                self.vars['scale']  = ones([1, x.get_shape()[1]],  name='scale')
+
+        if self.logging:
+            self._log_vars()
+
+    def _call(self, inputs):
+        # Dropout
+        p   = self.keep_prob
+        mu  = inputs
+        var = (1-p)/p * tf.square(inputs)
+
+        # Linear
+        mu  = dot(mu, self.vars['weights'], sparse=self.sparse_inputs)
+        var = dot(var, tf.square(self.vars['weights']), sparse=self.sparse_inputs)
+
+        # Norm
+        if self.norm:
+            mean, variance = tf.nn.moments(mu, axes=[1], keep_dims=True)
+            mu  = tf.nn.batch_normalization(mu, mean, variance, self.vars['offset'], self.vars['scale'], 1e-9)
+            var = var * (tf.square(self.vars['scale']) / variance)
+
+        # ReLU
+        sigma = tf.sqrt(var)
+        alpha = -mu / sigma
+        phi   = self.normal.prob(alpha)
+        Z     = 1 - self.normal.cdf(alpha)
+        
+        mu    = (1-Z) * (mu + sigma * phi / Z)
+        return mu
 
 
 class GatherAggregator(Layer):

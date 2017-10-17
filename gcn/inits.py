@@ -15,10 +15,10 @@ def glorot(shape, name=None):
 def zeros(shape, name=None):
     """All zeros."""
     return tf.get_variable(name=name, shape=shape, dtype=tf.float32, 
-                           initializer=tf.initializers.zeros())
+                           initializer=tf.zeros_initializer())
 
 
 def ones(shape, name=None):
     """All ones."""
     return tf.get_variable(name=name, shape=shape, dtype=tf.float32, 
-                           initializer=tf.initializers.ones())
+                           initializer=tf.ones_initializer())

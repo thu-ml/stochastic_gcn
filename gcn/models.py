@@ -247,8 +247,9 @@ class GCN(Model):
         self.layer_comp = []
 
         if self.preprocess:
-            self.layers.append(Dropout(1-self.placeholders['dropout']))
+            #self.layers.append(Dropout(1-self.placeholders['dropout']))
             for l in range(FLAGS.num_fc_layers):
+                self.layers.append(Dropout(1-self.placeholders['dropout']))
                 input_dim = self.input_dim*dim_s if l==0 else FLAGS.hidden1
                 sparse_inputs = self.sparse_mm if l==0 else False
                 self.layers.append(Dense(input_dim=input_dim,
