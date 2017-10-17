@@ -103,32 +103,34 @@ class Dense(Layer):
         self.featureless = featureless
         self.bias = bias
         self.norm = norm
+        self.log_values = [] # TODO hack
 
         with tf.variable_scope(self.name + '_vars'):
             self.vars['weights'] = glorot([input_dim, output_dim],
                                           name='weights')
-            if self.bias:
-                self.vars['bias'] = zeros([output_dim], name='bias')
 
         if self.logging:
             self._log_vars()
 
     def _call(self, inputs):
         x = inputs
+        self.log_values.append(x) # TODO hack
 
         # transform
         output = dot(x, self.vars['weights'], sparse=self.sparse_inputs)
 
-        # bias
-        if self.bias:
-            output += self.vars['bias']
+
+        self.log_values.append(output) # TODO hack
 
         with tf.variable_scope(self.name + '_vars'):
             if self.norm:
                 #output = layers.layer_norm(output)
                 output = MyLayerNorm(output)
+                self.log_values.append(output) # TODO hack
 
-        return self.act(output)
+        output = self.act(output)
+        self.log_values.append(output) # TODO hack
+        return output
 
 
 class DetDropoutFC(Layer):
@@ -136,18 +138,19 @@ class DetDropoutFC(Layer):
     def __init__(self, keep_prob, input_dim, output_dim, placeholders, sparse_inputs=False,
                  norm=True, **kwargs):
         # TODO sparse inputs
-        super(DetDropoutFC, self).__init__(*kwargs)
+        super(DetDropoutFC, self).__init__(**kwargs)
         self.sparse_inputs = sparse_inputs
         self.norm = norm
         self.keep_prob = keep_prob
         self.normal = Normal(0.0, 1.0)
+        self.log_values = []
 
         with tf.variable_scope(self.name + '_vars'):
             self.vars['weights'] = glorot([input_dim, output_dim],
                                           name='weights')
             if norm:
-                self.vars['offset'] = zeros([1, x.get_shape()[1]], name='offset')
-                self.vars['scale']  = ones([1, x.get_shape()[1]],  name='scale')
+                self.vars['offset'] = zeros([1, output_dim], name='offset')
+                self.vars['scale']  = ones ([1, output_dim], name='scale')
 
         if self.logging:
             self._log_vars()
@@ -157,24 +160,30 @@ class DetDropoutFC(Layer):
         p   = self.keep_prob
         mu  = inputs
         var = (1-p)/p * tf.square(inputs)
+        self.log_values.append((mu, var))
 
         # Linear
         mu  = dot(mu, self.vars['weights'], sparse=self.sparse_inputs)
         var = dot(var, tf.square(self.vars['weights']), sparse=self.sparse_inputs)
+        self.log_values.append((mu, var))
 
         # Norm
         if self.norm:
             mean, variance = tf.nn.moments(mu, axes=[1], keep_dims=True)
             mu  = tf.nn.batch_normalization(mu, mean, variance, self.vars['offset'], self.vars['scale'], 1e-9)
             var = var * (tf.square(self.vars['scale']) / variance)
+            self.log_values.append((mu, var))
 
         # ReLU
         sigma = tf.sqrt(var)
         alpha = -mu / sigma
         phi   = self.normal.prob(alpha)
-        Z     = 1 - self.normal.cdf(alpha)
+        Phi   = self.normal.cdf(alpha)
+        Z     = 1 - Phi + 1e-9
         
-        mu    = (1-Z) * (mu + sigma * phi / Z)
+        mu    = Z * (mu + sigma * phi / Z)
+        #mu = mu
+        self.log_values.append(mu)
         return mu
 
 

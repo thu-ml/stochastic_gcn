@@ -43,6 +43,8 @@ class Model(object):
         self.history_ops = []
         self.aggregators = []
 
+        self.log_values = []
+
         self.is_training = kwargs.get('is_training', True)
         if self.is_training:
             self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate, 
@@ -143,10 +145,13 @@ class Model(object):
         self._build()
 
         self.activations.append(self.inputs)
+        self.log_values.append(self.inputs)
         for layer in self.layers:
             hidden = layer(self.activations[-1])
             print('{} shape = {}'.format(layer.name, hidden.get_shape()))
             self.activations.append(hidden)
+            if hasattr(layer, 'log_values'):
+                self.log_values.extend(layer.log_values)
 
         self.outputs = self.activations[-1]
         self.update_history = []
@@ -249,22 +254,29 @@ class GCN(Model):
         if self.preprocess:
             #self.layers.append(Dropout(1-self.placeholders['dropout']))
             for l in range(FLAGS.num_fc_layers):
-                self.layers.append(Dropout(1-self.placeholders['dropout']))
                 input_dim = self.input_dim*dim_s if l==0 else FLAGS.hidden1
                 sparse_inputs = self.sparse_mm if l==0 else False
-                self.layers.append(Dense(input_dim=input_dim,
-                                         output_dim=FLAGS.hidden1,
-                                         placeholders=self.placeholders,
-                                         act=tf.nn.relu,
-                                         logging=self.logging,
-                                         sparse_inputs=sparse_inputs,
-                                         name='dense%d'%cnt, norm=FLAGS.layer_norm))
+                if FLAGS.det_dropout:
+                    self.layers.append(DetDropoutFC(keep_prob=1-self.placeholders['dropout'],
+                                             input_dim=input_dim,
+                                             output_dim=FLAGS.hidden1,
+                                             placeholders=self.placeholders,
+                                             logging=self.logging,
+                                             name='dense%d'%cnt, norm=FLAGS.layer_norm))
+                else:
+                    self.layers.append(Dropout(1-self.placeholders['dropout']))
+                    self.layers.append(Dense(input_dim=input_dim,
+                                             output_dim=FLAGS.hidden1,
+                                             placeholders=self.placeholders,
+                                             act=tf.nn.relu,
+                                             logging=self.logging,
+                                             sparse_inputs=sparse_inputs,
+                                             name='dense%d'%cnt, norm=FLAGS.layer_norm))
                 self.layer_comp.append((input_dim*FLAGS.hidden1, 0))
                 cnt += 1
 
         for l in range(self.L):
             self.layers.append(self.aggregators[l])
-            self.layers.append(Dropout(1-self.placeholders['dropout']))
             for l2 in range(FLAGS.num_fc_layers):
                 dim        = self.agg0_dim if l==0 else FLAGS.hidden1
                 input_dim  = dim*dim_s if l2==0 else FLAGS.hidden1
@@ -273,12 +285,22 @@ class GCN(Model):
                 act        = (lambda x: x)   if last_layer else tf.nn.relu 
                 layer_norm = False           if last_layer else FLAGS.layer_norm
 
-                self.layers.append(Dense(input_dim=input_dim,
-                                         output_dim=output_dim,
-                                         placeholders=self.placeholders,
-                                         act=act,
-                                         logging=self.logging,
-                                         name='dense%d'%cnt, norm=layer_norm))
+                if FLAGS.det_dropout and l+1 != self.L:
+                    self.layers.append(DetDropoutFC(keep_prob=1-self.placeholders['dropout'],
+                                             input_dim=input_dim,
+                                             output_dim=output_dim,
+                                             placeholders=self.placeholders,
+                                             act=act,
+                                             logging=self.logging,
+                                             name='dense%d'%cnt, norm=layer_norm))
+                else:
+                    self.layers.append(Dropout(1-self.placeholders['dropout']))
+                    self.layers.append(Dense(input_dim=input_dim,
+                                             output_dim=output_dim,
+                                             placeholders=self.placeholders,
+                                             act=act,
+                                             logging=self.logging,
+                                             name='dense%d'%cnt, norm=layer_norm))
                 self.layer_comp.append((input_dim*output_dim, l+1))
                 cnt += 1
 

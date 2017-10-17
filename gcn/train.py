@@ -51,6 +51,8 @@ flags.DEFINE_bool('layer_norm', False, 'Layer normalization')
 flags.DEFINE_float('polyak_decay', 0, 'Decay for model averaging')
 flags.DEFINE_bool('load', False, 'Load the model')
 
+flags.DEFINE_bool('det_dropout', False, 'Determinstic dropout')
+
 flags.DEFINE_integer('seed', 1, 'Random seed')
 
 tf.set_random_seed(FLAGS.seed)
@@ -244,6 +246,45 @@ def Analyze():
         print('Part {} stdev = {}'.format(model.vars[i].name, np.mean(part_grads[i].std())))
 
 
+def Analyze2():
+    # Testing
+    batch = train_d[:1]
+
+    num_vars = len(train_model.log_values)
+
+    full_times = 1000
+    full_values = [Stat() for _ in range(num_vars)]
+    feed_dict = eval_sch.batch(batch)
+    feed_dict[placeholders['dropout']] = FLAGS.dropout
+    train_model.get_data(feed_dict)
+
+    if not FLAGS.det_dropout:
+        for i in range(full_times):
+            acts = sess.run(train_model.log_values, feed_dict=feed_dict)
+            for j in range(num_vars):
+                full_values[j].add(acts[j])
+
+        for i in range(num_vars):
+            print(i)
+            print(full_values[i].mean()[0,:5], full_values[i].std()[0,:5])
+    else:
+        for i in range(full_times):
+            acts = sess.run(train_model.log_values, feed_dict=feed_dict)
+            for j in range(num_vars):
+                if len(acts[j]) == 2:
+                    full_values[j] = acts[j]
+                else:
+                    full_values[j].add(acts[j])
+
+        for i in range(num_vars):
+            if isinstance(full_values[i], Stat):
+                print('Stochastic {}'.format(i))
+                print(full_values[i].mean()[0,:5], full_values[i].std()[0,:5])
+            else:
+                print('Deterministic {}'.format(i))
+                print(full_values[i][0][0,:5], np.sqrt(full_values[i][1][0,:5]))
+
+
 def Test():
     # Testing
     test_cost, test_acc, micro, macro, test_duration = evaluate(test_d)
@@ -256,6 +297,7 @@ def Test():
 SGDTrain()
 
 #Analyze()
+Analyze2()
 
 for i in range(FLAGS.num_layers + 1):
     Test()
