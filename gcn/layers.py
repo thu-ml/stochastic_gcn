@@ -158,8 +158,14 @@ class DetDropoutFC(Layer):
     def _call(self, inputs):
         # Dropout
         p   = self.keep_prob
-        mu  = inputs
-        var = (1-p)/p * tf.square(inputs)
+        if isinstance(inputs, tuple):
+            mu, var = inputs
+            mu2 = tf.square(mu)
+            var = (var+mu2) / p - mu2
+        else:
+            mu = inputs
+            var = (1-p)/p * tf.square(inputs)
+
         self.log_values.append((mu, var))
 
         # Linear
@@ -181,10 +187,11 @@ class DetDropoutFC(Layer):
         Phi   = self.normal.cdf(alpha)
         Z     = 1 - Phi + 1e-9
         
-        mu    = Z * (mu + sigma * phi / Z)
-        #mu = mu
-        self.log_values.append(mu)
-        return mu
+        m     = mu + sigma * phi / Z
+        mu    = Z * m
+        var   = Z * (1-Z) * tf.square(m)        # TODO approximation
+        self.log_values.append((mu, var))
+        return mu, var
 
 
 class GatherAggregator(Layer):
@@ -207,15 +214,29 @@ class PlainAggregator(Layer):
 
     def _call(self, inputs):
         ofield_size = self.adj.dense_shape[0]
-        a_self      = inputs[:tf.cast(ofield_size, tf.int32)]
 
-        # ofield * d
-        a_neighbour = dot(self.adj, inputs, sparse=True)
-        a_self      = inputs[:tf.cast(ofield_size, tf.int32)]
-        if FLAGS.normalization == 'gcn':
-            return a_neighbour
+        if isinstance(inputs, tuple):
+            mu, var = inputs
+            mu_self      = mu[:tf.cast(ofield_size, tf.int32)]
+            var_self     = var[:tf.cast(ofield_size, tf.int32)]
+
+            mu_neighbour  = dot(self.adj, mu, sparse=True)
+            var_neighbour = dot(tf.square(self.adj), var, sparse=True)
+
+            if FLAGS.normalization == 'gcn':
+                return (mu_neighbour, var_neighbour)
+            else:
+                return (tf.concat((mu_self, mu_neighbour), axis=1),
+                        tf.concat((var_self, var_neighbour), axis=1))
         else:
-            return tf.concat((a_self, a_neighbour), axis=1)
+            a_self      = inputs[:tf.cast(ofield_size, tf.int32)]
+
+            # ofield * d
+            a_neighbour = dot(self.adj, inputs, sparse=True)
+            if FLAGS.normalization == 'gcn':
+                return a_neighbour
+            else:
+                return tf.concat((a_self, a_neighbour), axis=1)
 
 
 class EMAAggregator(Layer):
@@ -272,7 +293,11 @@ class Dropout(Layer):
         self.keep_prob   = keep_prob
 
     def _call(self, inputs):
-        if isinstance(inputs, tf.SparseTensor):
+        if isinstance(inputs, tuple):
+            mu, var = inputs
+            x = mu + tf.random_normal(tf.shape(var)) * tf.sqrt(var + 1e-10)
+            return tf.nn.dropout(x, self.keep_prob)
+        elif isinstance(inputs, tf.SparseTensor):
             return sparse_dropout(inputs, self.keep_prob)
         else:
             return tf.nn.dropout(inputs, self.keep_prob)

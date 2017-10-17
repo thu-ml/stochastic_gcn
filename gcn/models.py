@@ -148,7 +148,10 @@ class Model(object):
         self.log_values.append(self.inputs)
         for layer in self.layers:
             hidden = layer(self.activations[-1])
-            print('{} shape = {}'.format(layer.name, hidden.get_shape()))
+            if isinstance(hidden, tuple):
+                print('{} shape = {}'.format(layer.name, hidden[0].get_shape()))
+            else:
+                print('{} shape = {}'.format(layer.name, hidden.get_shape()))
             self.activations.append(hidden)
             if hasattr(layer, 'log_values'):
                 self.log_values.extend(layer.log_values)
@@ -210,7 +213,7 @@ class Model(object):
 
 class GCN(Model):
     def __init__(self, L, preprocess, placeholders, 
-                 features, nbr_features, adj,
+                 features, nbr_features, adj, 
                  **kwargs):
         super(GCN, self).__init__(**kwargs)
 
