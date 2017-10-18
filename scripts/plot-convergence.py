@@ -24,7 +24,8 @@ sns.set_style("whitegrid")
 #num_runs = 10
 #dir='logs_old'
 
-datasets   = ['citeseer', 'cora', 'pubmed', 'nell'] #, 'ppi']
+datasets   = [('citeseer', 10), ('cora', 10), ('pubmed', 10), ('nell', 10), ('ppi', 3), ('reddit', 1)]
+#datasets   = ['reddit']
 exps1 = [(20, False, 'True', True,  '#000000', 'Batch'),               # k
          #(20, False, 'Fast', True,  '#FF0000', 'Batch+Det'),           # r
          (1,  False, 'True', False, '#777777', 'SGD'),               # 0.5k
@@ -33,7 +34,6 @@ exps1 = [(20, False, 'True', True,  '#000000', 'Batch'),               # k
          (1,  True,  'True', True,  '#00FF00',  'SGD+PP+CV'),         # g
          (1,  True,  'Fast', True,  '#FFFF00',  'SGD+PP+CV+Det')]     # (r, g)
 all_exps = [exps1]
-num_runs = 10
 dir='logs'
 
 iafig, iaax = plt.subplots(2, 3, figsize=(16, 8))
@@ -41,6 +41,7 @@ ilfig, ilax = plt.subplots(2, 3, figsize=(16, 8))
 dafig, daax = plt.subplots(2, 3, figsize=(16, 8))
 dlfig, dlax = plt.subplots(2, 3, figsize=(16, 8))
 for ndata, data in enumerate(datasets):
+    data, num_runs = data
     for nexp, exps in enumerate(all_exps):
         fig, ax = plt.subplots(2, 3, figsize=(16, 8))
         cnt = 0
@@ -152,9 +153,9 @@ for ndata, data in enumerate(datasets):
         elif data=='nell':
             ylim = (0.4, 0.7)
         elif data=='ppi':
-            ylim = (0.9, 1.0)
+            ylim = (0.7, 1.0)
         elif data=='reddit':
-            ylim = (0.85, 1.0)
+            ylim = (0.92, 0.97)
         else:
             ylim = (0.55, 0.7)
         if data=='ppi' or data=='reddit':
