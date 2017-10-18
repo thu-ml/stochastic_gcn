@@ -250,6 +250,7 @@ def Analyze():
 
 
 def Analyze2():
+    np.set_printoptions(precision=4, suppress=True)
     # Testing
     batch = train_d[:1]
 
@@ -300,7 +301,7 @@ def Test():
 SGDTrain()
 
 #Analyze()
-Analyze2()
+#Analyze2()
 
 for i in range(FLAGS.num_layers + 1):
     Test()

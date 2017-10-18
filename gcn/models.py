@@ -266,6 +266,7 @@ class GCN(Model):
                                              output_dim=FLAGS.hidden1,
                                              placeholders=self.placeholders,
                                              logging=self.logging,
+                                             sparse_inputs=sparse_inputs,
                                              name='dense%d'%cnt, norm=FLAGS.layer_norm))
                 else:
                     self.layers.append(Dropout(1-self.placeholders['dropout']))
@@ -294,7 +295,6 @@ class GCN(Model):
                                              input_dim=input_dim,
                                              output_dim=output_dim,
                                              placeholders=self.placeholders,
-                                             act=act,
                                              logging=self.logging,
                                              name='dense%d'%cnt, norm=layer_norm))
                 else:

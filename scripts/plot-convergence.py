@@ -26,6 +26,7 @@ sns.set_style("whitegrid")
 
 datasets   = ['ppi']
 exps1 = [(20, False, 'True', True, 'k', 'Batch'),
+         (20, False, 'Fast', True, 'k', 'Batch'),
          (1,  False, 'True', False, 'r:', 'SGD'),
          (1,  False, 'True', True,  'r',  'SGD+PP'),
          (1,  False, 'Fast', True,  'b',  'SGD+PP+Det'),

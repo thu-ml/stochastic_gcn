@@ -170,7 +170,7 @@ class DetDropoutFC(Layer):
 
         # Linear
         mu  = dot(mu, self.vars['weights'], sparse=self.sparse_inputs)
-        var = dot(var, tf.square(self.vars['weights']), sparse=self.sparse_inputs)
+        var = dot(var, tf.square(self.vars['weights']), sparse=self.sparse_inputs) * 1.2 # TODO hack
         self.log_values.append((mu, var))
 
         # Norm
