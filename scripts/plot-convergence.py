@@ -24,19 +24,22 @@ sns.set_style("whitegrid")
 #num_runs = 10
 #dir='logs_old'
 
-datasets   = ['ppi']
-exps1 = [(20, False, 'True', True, 'k', 'Batch'),
-         (20, False, 'Fast', True, 'k', 'Batch'),
-         (1,  False, 'True', False, 'r:', 'SGD'),
-         (1,  False, 'True', True,  'r',  'SGD+PP'),
-         (1,  False, 'Fast', True,  'b',  'SGD+PP+Det'),
-         (1,  True,  'True', True,  'b',  'SGD+PP+CV'),
-         (1,  True,  'Fast', True,  'g',  'SGD+PP+CV+Det')]
+datasets   = ['citeseer', 'cora', 'pubmed', 'nell'] #, 'ppi']
+exps1 = [(20, False, 'True', True,  '#000000', 'Batch'),               # k
+         #(20, False, 'Fast', True,  '#FF0000', 'Batch+Det'),           # r
+         (1,  False, 'True', False, '#777777', 'SGD'),               # 0.5k
+         (1,  False, 'True', True,  '#0000FF',  'SGD+PP'),            # b
+         #(1,  False, 'Fast', True,  '#FF00FF',  'SGD+PP+Det'),        # (r, b)
+         (1,  True,  'True', True,  '#00FF00',  'SGD+PP+CV'),         # g
+         (1,  True,  'Fast', True,  '#FFFF00',  'SGD+PP+CV+Det')]     # (r, g)
 all_exps = [exps1]
-num_runs = 3
+num_runs = 10
 dir='logs'
 
-gfig, gax = plt.subplots(2, 3, figsize=(16, 8))
+iafig, iaax = plt.subplots(2, 3, figsize=(16, 8))
+ilfig, ilax = plt.subplots(2, 3, figsize=(16, 8))
+dafig, daax = plt.subplots(2, 3, figsize=(16, 8))
+dlfig, dlax = plt.subplots(2, 3, figsize=(16, 8))
 for ndata, data in enumerate(datasets):
     for nexp, exps in enumerate(all_exps):
         fig, ax = plt.subplots(2, 3, figsize=(16, 8))
@@ -50,11 +53,13 @@ for ndata, data in enumerate(datasets):
         amt_data = []
         units    = []
         legends  = []
+        colors = {}
     
         cnt = 0
         for deg, cv, dropout, pp, style, text in exps:
             if data == 'nell' and not pp:
                 continue
+            colors[cnt] = style
             legends.append(text)
             my_amt_data = []
             for run in range(num_runs):
@@ -83,21 +88,36 @@ for ndata, data in enumerate(datasets):
         df = pd.DataFrame(data={'loss': losses, 'acc': accs, 'type': types, 'iter': iters, 'data': amt_data, 'run': units, 'train_loss': train_losses})
     
         # iter - trainloss
-        sns.tsplot(data=df, time="iter", unit="run", condition="type", value="train_loss", ax=ax[0,0], legend=False)
+        sns.tsplot(data=df, time="iter", unit="run", condition="type", value="train_loss", ax=ax[0,0], legend=False, color=colors)
         # data - trainloss
-        sns.tsplot(data=df, time="data", unit="run", condition="type", value="loss", ax=ax[1,0], legend=False)
+        sns.tsplot(data=df, time="data", unit="run", condition="type", value="loss", ax=ax[1,0], legend=False, color=colors)
         # iter - loss
-        sns.tsplot(data=df, time="iter", unit="run", condition="type", value="loss", ax=ax[0,1], legend=False)
+        sns.tsplot(data=df, time="iter", unit="run", condition="type", value="loss", ax=ax[0,1], legend=False, color=colors)
         # data - loss
-        sns.tsplot(data=df, time="data", unit="run", condition="type", value="loss", ax=ax[1,1], legend=False)
+        sns.tsplot(data=df, time="data", unit="run", condition="type", value="loss", ax=ax[1,1], legend=False, color=colors)
         # iter - acc
-        sns.tsplot(data=df, time="iter", unit="run", condition="type", value="acc", ax=ax[0,2], legend=False)
+        sns.tsplot(data=df, time="iter", unit="run", condition="type", value="acc", ax=ax[0,2], legend=False, color=colors)
         # data - acc
-        sns.tsplot(data=df, time="data", unit="run", condition="type", value="acc", ax=ax[1,2], legend=False)
+        sns.tsplot(data=df, time="data", unit="run", condition="type", value="acc", ax=ax[1,2], legend=False, color=colors)
 
-        ggax = gax[ndata//3, ndata%3]
-        sns.tsplot(data=df, time="iter", unit="run", condition="type", value="acc", ax=ggax)
-        ggax.set_title(data)
+        ia_ax = iaax[ndata//3, ndata%3]
+        il_ax = ilax[ndata//3, ndata%3]
+        da_ax = daax[ndata//3, ndata%3]
+        dl_ax = dlax[ndata//3, ndata%3]
+
+        sns.tsplot(data=df, time="iter", unit="run", condition="type", value="acc", ax=ia_ax, legend=False, color=colors)
+        ia_ax.legend(ia_ax.lines, legends)
+        sns.tsplot(data=df, time="iter", unit="run", condition="type", value="loss", ax=il_ax, legend=False, color=colors)
+        il_ax.legend(il_ax.lines, legends)
+        sns.tsplot(data=df, time="data", unit="run", condition="type", value="acc", ax=da_ax, legend=False, color=colors)
+        da_ax.legend(da_ax.lines, legends)
+        sns.tsplot(data=df, time="data", unit="run", condition="type", value="loss", ax=dl_ax, legend=False, color=colors)
+        dl_ax.legend(dl_ax.lines, legends)
+
+        ia_ax.set_title(data)
+        il_ax.set_title(data)
+        da_ax.set_title(data)
+        dl_ax.set_title(data)
     
         ax[0,2].legend(ax[0,0].lines, legends)
         #ax[0,2].axis('off')
@@ -106,27 +126,31 @@ for ndata, data in enumerate(datasets):
     
         ax[0,0].set_xlabel('Number of iterations')
         ax[0,1].set_xlabel('Number of iterations')
+        il_ax.set_xlabel('Number of iterations')
         ax[0,2].set_xlabel('Number of iterations')
-        ggax.set_xlabel('Number of iterations')
+        ia_ax.set_xlabel('Number of iterations')
         ax[1,0].set_xlabel('Amount of data seen')
         ax[1,1].set_xlabel('Amount of data seen')
-        ax[1,2].set_xlabel('Amount of data seen')
+        dl_ax.set_xlabel('Amount of data seen')
         ax[0,0].set_ylabel('Training loss')
         ax[0,1].set_ylabel('Validation loss')
+        il_ax.set_ylabel('Validation loss')
         ax[0,2].set_ylabel('Validation accuracy')
-        ggax.set_ylabel('Validation accuracy')
+        ia_ax.set_ylabel('Validation accuracy')
         ax[1,0].set_ylabel('Training loss')
         ax[1,1].set_ylabel('Validation loss')
+        dl_ax.set_ylabel('Validation loss')
         ax[1,2].set_ylabel('Validation accuracy')
+        da_ax.set_ylabel('Validation accuracy')
         ylim = (0, 0)
         if data=='cora':
-            ylim = (0.6, 0.81)
+            ylim = (0.725, 0.80)
         elif data=='pubmed':
-            ylim = (0.6, 0.81)
+            ylim = (0.725, 0.81)
         elif data=='citeseer':
-            ylim = (0.60, 0.75)
+            ylim = (0.64, 0.72)
         elif data=='nell':
-            ylim = (0.0, 0.7)
+            ylim = (0.4, 0.7)
         elif data=='ppi':
             ylim = (0.9, 1.0)
         elif data=='reddit':
@@ -135,8 +159,12 @@ for ndata, data in enumerate(datasets):
             ylim = (0.55, 0.7)
         if data=='ppi' or data=='reddit':
             xlim = (0, 1e7)
+        elif data=='pubmed':
+            xlim = (0, 40000)
+        elif data=='nell':
+            xlim = (0, 60000)
         else:
-            xlim = (0, 100000)
+            xlim = (0, 80000)
         if data=='ppi':
             xlim0 = (0, 800)
         elif data=='reddit':
@@ -147,16 +175,23 @@ for ndata, data in enumerate(datasets):
         print(ylim, xlim, xlim0)
         if ylim[0] != 0:
             ax[0,2].set_ylim(ylim)
-            ggax.set_ylim(ylim)
+            ia_ax.set_ylim(ylim)
             ax[1,2].set_ylim(ylim)
+            da_ax.set_ylim(ylim)
         ax[1,0].set_xlim(xlim)
         ax[1,1].set_xlim(xlim)
+        dl_ax.set_xlim(xlim)
         ax[1,2].set_xlim(xlim)
+        da_ax.set_xlim(xlim)
         ax[0,0].set_xlim(xlim0)
         ax[0,1].set_xlim(xlim0)
+        il_ax.set_xlim(xlim0)
         ax[0,2].set_xlim(xlim0)
-        ggax.set_xlim(xlim0)
+        ia_ax.set_xlim(xlim0)
         
         fig.savefig('{}_{}.pdf'.format(data, nexp))
 
-gfig.savefig('iter-acc.pdf') 
+iafig.savefig('iter-acc.pdf') 
+ilfig.savefig('iter-loss.pdf') 
+dafig.savefig('data-acc.pdf')
+dlfig.savefig('data-loss.pdf')

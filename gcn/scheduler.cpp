@@ -3,7 +3,6 @@
 #include <random>
 #include <algorithm>
 
-std::mt19937 generator;
 uniform_real_distribution<float> u01;
 
 
@@ -17,6 +16,10 @@ Scheduler::Scheduler(float *adj_w, int *adj_i, int *adj_p, int num_data, int num
     visited(num_data, -1), fvisited(num_data, -1)
 {
     this->adj_p.push_back(num_edges);
+}
+
+void Scheduler::seed(int seed) {
+    generator.seed(seed);
 }
 
 void Scheduler::start_batch(int num_data, int *data) {

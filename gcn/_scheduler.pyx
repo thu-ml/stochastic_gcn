@@ -13,6 +13,7 @@ cdef extern from "scheduler.h":
         Scheduler(float*, int*, int*, int, int, int, bool) except +
         void start_batch(int, int*)
         void expand(int)
+        void seed(int)
         vector[float] adj_w, edg_w, medg_w, fedg_w
         vector[int] field, new_field, ffield, adj_i, adj_p, edg_s, edg_t, fedg_s, fedg_t, visited
         bool cv
@@ -31,12 +32,13 @@ cdef class PyScheduler:
     cdef int start
     cdef float t
 
-    def __init__(self, adj, labels, L, degrees, placeholders, data=None, cv=False):
+    def __init__(self, adj, labels, L, degrees, placeholders, seed, data=None, cv=False):
         cdef float[:] ad = adj.data
         cdef int[:]   ai = adj.indices
         cdef int[:]   ap = adj.indptr
         self.c_sch = Scheduler(&ad[0], &ai[0], &ap[0],
                                labels.shape[0], adj.data.shape[0], L, cv)
+        self.c_sch.seed(seed)
         self.labels = labels
         self.data = data
         self.degrees = degrees

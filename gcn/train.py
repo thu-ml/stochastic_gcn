@@ -104,8 +104,8 @@ print('Finised in {} seconds'.format(time()-t))
 
 train_degrees   = np.array([FLAGS.degree]*L, dtype=np.int32)
 test_degrees    = np.array([FLAGS.test_degree]*test_L, dtype=np.int32)
-train_sch = PyScheduler(train_adj, labels, L, train_degrees, placeholders, train_d, cv=FLAGS.cv)
-eval_sch  = PyScheduler(full_adj,  labels, test_L, test_degrees,  placeholders, cv=FLAGS.test_cv)
+train_sch = PyScheduler(train_adj, labels, L, train_degrees, placeholders, FLAGS.seed, train_d, cv=FLAGS.cv)
+eval_sch  = PyScheduler(full_adj,  labels, test_L, test_degrees,  placeholders, FLAGS.seed, cv=FLAGS.test_cv)
 
 
 # Initialize session
