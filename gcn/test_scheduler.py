@@ -20,13 +20,21 @@ deg = diags(1.0/deg, 0)
 adj = deg.dot(adj)
 print(adj)
 
+L = 2
+
+placeholders = {
+        'adj': ['adj_{}'.format(i) for i in range(L)],
+        'madj': ['madj_{}'.format(i) for i in range(L)],
+        'fadj': ['fadj_{}'.format(i) for i in range(L)],
+        'fields': ['fields_{}'.format(i) for i in range(L+1)],
+        'ffields': ['ffields_{}'.format(i) for i in range(L+1)],
+        'labels': 'labels'
+        }
 
 labels = np.zeros((11, 2))
-sch = PyScheduler(adj, labels, 2, [1, 2])
-fields, adjs = sch.batch(np.array([0], dtype=np.int32))
-print(fields[0])
-print(fields[1])
-print(fields[2])
-print(adjs[0])
-print('-')
-print(adjs[1])
+sch = PyScheduler(adj, labels, 2, [1, 2], placeholders, cv=True)
+feed_dict = sch.batch(np.array([0], dtype=np.int32))
+
+for k in feed_dict:
+    print(k)
+    print(feed_dict[k])

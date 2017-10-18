@@ -48,9 +48,8 @@ class VRGCN(GCN):
         # Read history
         for l in range(self.L):
             ofield = feed_dict[self.placeholders['fields'][l+1]]
-            fadj = slice(self.adj, ofield)
             adj = feed_dict[self.placeholders['adj'][l]][0]
-            feed_dict[self.placeholders['fadj'][l]] = fadj
+            fadj = feed_dict[self.placeholders['fadj'][l]][0]
 
             dim = self.agg0_dim if l==0 else FLAGS.hidden1
             self.g_ops += fadj[0].shape[0] * dim * 2
@@ -90,11 +89,13 @@ class VRGCN(GCN):
     def _build_aggregators(self):
         adjs   = self.placeholders['adj']
         fadjs  = self.placeholders['fadj']
+        madjs  = self.placeholders['madj']
         for l in range(self.L):
             ifield  = self.placeholders['fields'][l]
+            ffield  = self.placeholders['ffields'][l]
             history = self.history[l]
-            agg = VRAggregator(adjs[l], fadjs[l],
-                               ifield,
+            agg = VRAggregator(adjs[l], fadjs[l], madjs[l],
+                               ifield, ffield,
                                history, name='agg%d'%l)
             self.aggregators.append(agg)
 

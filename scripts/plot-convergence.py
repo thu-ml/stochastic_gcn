@@ -6,24 +6,37 @@ import numpy as np
 import seaborn as sns
 import pandas as pd
 
-data_dir   = 'logs'
+sns.set_style("whitegrid")
+
 #datasets   = ['cora', 'pubmed', 'nell', 'citeseer', 'ppi']
-datasets   = ['nell']
+#exps1 = [(20, False, True, True,  'k',  'Batch'),
+#         (1,  False, True, False, 'r:', '-CV, -PP'),
+#         (1,  False, True, True,  'r',  '-CV, +PP'),
+#         (1,  True,  True, False, 'b:', '+CV, -PP'),
+#         (1,  True,  True, True,  'b',  '+CV, +PP')]
+#exps2 = [(20, False, True,  True,  'k',  'Batch, +dropout'),
+#         (20, False, False, True,  'k:', 'Batch'),
+#         (1,  False, False, False, 'r:', '-CV, -PP'),
+#         (1,  False, False, True,  'r',  '-CV, +PP'),
+#         (1,  True,  False, False, 'b:', '+CV, -PP'),
+#         (1,  True,  False, True,  'b',  '+CV, +PP')]
+#all_exps = [exps1, exps2]
+#num_runs = 10
+#dir='logs_old'
 
-exps1 = [(20, False, True, True,  'k',  'Batch'),
-         (1,  False, True, False, 'r:', '-CV, -PP'),
-         (1,  False, True, True,  'r',  '-CV, +PP'),
-         (1,  True,  True, False, 'b:', '+CV, -PP'),
-         (1,  True,  True, True,  'b',  '+CV, +PP')]
-exps2 = [(20, False, True,  True,  'k',  'Batch, +dropout'),
-         (20, False, False, True,  'k:', 'Batch'),
-         (1,  False, False, False, 'r:', '-CV, -PP'),
-         (1,  False, False, True,  'r',  '-CV, +PP'),
-         (1,  True,  False, False, 'b:', '+CV, -PP'),
-         (1,  True,  False, True,  'b',  '+CV, +PP')]
-all_exps = [exps1, exps2]
+datasets   = ['ppi']
+exps1 = [(20, False, 'True', True, 'k', 'Batch'),
+         (1,  False, 'True', False, 'r:', 'SGD'),
+         (1,  False, 'True', True,  'r',  'SGD+PP'),
+         (1,  False, 'Fast', True,  'b',  'SGD+PP+Det'),
+         (1,  True,  'True', True,  'b',  'SGD+PP+CV'),
+         (1,  True,  'Fast', True,  'g',  'SGD+PP+CV+Det')]
+all_exps = [exps1]
+num_runs = 3
+dir='logs'
 
-for data in datasets:
+gfig, gax = plt.subplots(2, 3, figsize=(16, 8))
+for ndata, data in enumerate(datasets):
     for nexp, exps in enumerate(all_exps):
         fig, ax = plt.subplots(2, 3, figsize=(16, 8))
         cnt = 0
@@ -43,9 +56,9 @@ for data in datasets:
                 continue
             legends.append(text)
             my_amt_data = []
-            for run in range(10):
-                log_file = 'logs/{}_pp{}_dropout{}_deg{}_cv{}_run{}.log'.format(
-                            data, pp, dropout, deg, cv, run)
+            for run in range(num_runs):
+                log_file = '{}/{}_pp{}_dropout{}_deg{}_cv{}_run{}.log'.format(
+                            dir, data, pp, dropout, deg, cv, run)
                 N = 0
                 with open(log_file) as f:
                     lines = f.readlines()
@@ -80,6 +93,10 @@ for data in datasets:
         sns.tsplot(data=df, time="iter", unit="run", condition="type", value="acc", ax=ax[0,2], legend=False)
         # data - acc
         sns.tsplot(data=df, time="data", unit="run", condition="type", value="acc", ax=ax[1,2], legend=False)
+
+        ggax = gax[ndata//3, ndata%3]
+        sns.tsplot(data=df, time="iter", unit="run", condition="type", value="acc", ax=ggax)
+        ggax.set_title(data)
     
         ax[0,2].legend(ax[0,0].lines, legends)
         #ax[0,2].axis('off')
@@ -89,12 +106,14 @@ for data in datasets:
         ax[0,0].set_xlabel('Number of iterations')
         ax[0,1].set_xlabel('Number of iterations')
         ax[0,2].set_xlabel('Number of iterations')
+        ggax.set_xlabel('Number of iterations')
         ax[1,0].set_xlabel('Amount of data seen')
         ax[1,1].set_xlabel('Amount of data seen')
         ax[1,2].set_xlabel('Amount of data seen')
         ax[0,0].set_ylabel('Training loss')
         ax[0,1].set_ylabel('Validation loss')
         ax[0,2].set_ylabel('Validation accuracy')
+        ggax.set_ylabel('Validation accuracy')
         ax[1,0].set_ylabel('Training loss')
         ax[1,1].set_ylabel('Validation loss')
         ax[1,2].set_ylabel('Validation accuracy')
@@ -108,7 +127,7 @@ for data in datasets:
         elif data=='nell':
             ylim = (0.0, 0.7)
         elif data=='ppi':
-            ylim = (0.7, 1.0)
+            ylim = (0.9, 1.0)
         elif data=='reddit':
             ylim = (0.85, 1.0)
         else:
@@ -118,7 +137,7 @@ for data in datasets:
         else:
             xlim = (0, 100000)
         if data=='ppi':
-            xlim0 = (0, 400)
+            xlim0 = (0, 800)
         elif data=='reddit':
             xlim0 = (0, 50)
         else:
@@ -127,6 +146,7 @@ for data in datasets:
         print(ylim, xlim, xlim0)
         if ylim[0] != 0:
             ax[0,2].set_ylim(ylim)
+            ggax.set_ylim(ylim)
             ax[1,2].set_ylim(ylim)
         ax[1,0].set_xlim(xlim)
         ax[1,1].set_xlim(xlim)
@@ -134,6 +154,8 @@ for data in datasets:
         ax[0,0].set_xlim(xlim0)
         ax[0,1].set_xlim(xlim0)
         ax[0,2].set_xlim(xlim0)
+        ggax.set_xlim(xlim0)
         
         fig.savefig('{}_{}.pdf'.format(data, nexp))
-    
+
+gfig.savefig('iter-acc.pdf') 

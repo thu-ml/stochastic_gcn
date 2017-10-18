@@ -265,12 +265,14 @@ class EMAAggregator(Layer):
 
 
 class VRAggregator(Layer):
-    def __init__(self, adj, fadj, ifield, history, **kwargs):
+    def __init__(self, adj, fadj, madj, ifield, ffield, history, **kwargs):
         super(VRAggregator, self).__init__(**kwargs)
 
         self.adj           = adj
         self.fadj          = fadj
+        self.madj          = madj
         self.ifield        = ifield
+        self.ffield        = ffield
         self.history       = history
 
     def _call(self, inputs):
@@ -282,20 +284,23 @@ class VRAggregator(Layer):
             mu_self  = mu[:ofield_size]
             var_self = var[:ofield_size]
 
-            # TODO inefficient
             mu_history, var_history = self.history
-            sgm_history = tf.sqrt(var_history)
 
-            mu_subhistory  = tf.gather(mu_history, self.ifield, name='mu_sub')
-            sgm_subhistory = tf.gather(sgm_history, self.ifield, name='sgm_sub')
-            
-            delta_mu    = mu - mu_subhistory
-            delta_sigma = tf.sqrt(var) - sgm_subhistory
+            delta_mu = mu - tf.gather(mu_history, self.ifield)
+            mu_bar   = tf.gather(mu_history, self.ffield)
 
-            mu_neighbour  = dot(self.adj, delta_mu, sparse=True) + dot(self.fadj, mu_history, sparse=True)
-            # TODO approximate
+            sigma       = tf.sqrt(var)
+            sigma_bar   = tf.sqrt(tf.gather(var_history, self.ifield))
+            delta_sigma = sigma - sigma_bar
+            var_bar     = tf.gather(var_history, self.ffield)
+            msigma      = delta_sigma * sigma_bar
+
+            mu_neighbour  = dot(self.adj, delta_mu, sparse=True) + dot(self.fadj, mu_bar, sparse=True)
             var_neighbour = dot(tf.square(self.adj), tf.square(delta_sigma), sparse=True) + \
-                            dot(tf.square(self.fadj), var_history, sparse=True)
+                            dot(tf.square(self.fadj), var_bar, sparse=True) + \
+                            2 * dot(self.madj, msigma, sparse=True)
+            #var_neighbour = tf.Print(var_neighbour, [tf.reduce_min(var_neighbour)])
+            var_neighbour = tf.nn.relu(var_neighbour) + 1e-10
 
             self.new_history = (mu, var)
 
@@ -309,7 +314,7 @@ class VRAggregator(Layer):
             a_self      = inputs[:ofield_size]
             a_neighbour_current = dot(self.adj, inputs, sparse=True)
             a_neighbour_history = dot(self.adj, tf.gather(history, self.ifield), sparse=True)
-            a_history_mean      = dot(self.fadj, history, sparse=True)
+            a_history_mean      = dot(self.fadj, tf.gather(history, self.ffield), sparse=True)
             a_neighbour         = a_neighbour_current - a_neighbour_history + a_history_mean
             self.new_history    = [inputs]
 

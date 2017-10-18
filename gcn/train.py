@@ -73,9 +73,12 @@ test_L       = FLAGS.num_layers-1 if FLAGS.test_preprocess else FLAGS.num_layers
 # Define placeholders
 placeholders = {
     'adj':    [tf.sparse_placeholder(tf.float32, name='adj_%d'%l) for l in range(L)],
+    'madj':   [tf.sparse_placeholder(tf.float32, name='madj_%d'%l) for l in range(L)],
     'fadj':   [tf.sparse_placeholder(tf.float32, name='fadj_%d'%l) for l in range(L)],
     'fields': [tf.placeholder(tf.int32, shape=(None),name='field_%d'%l) 
                for l in range(L+1)],
+    'ffields': [tf.placeholder(tf.int32, shape=(None),name='ffield_%d'%l) 
+               for l in range(L)],
     'labels': tf.placeholder(tf.float32, shape=(None, labels.shape[1]), 
               name='labels'),
     'dropout': tf.placeholder_with_default(0., shape=(), name='dropout')
@@ -84,7 +87,7 @@ placeholders = {
 t = time()
 print('Building model...')
 train_model = VRGCN if FLAGS.cv else PlainGCN
-test_model  = VRGCN if FLAGS.cv else PlainGCN
+test_model  = VRGCN if FLAGS.test_cv else PlainGCN
 
 def model_func(model, nbr_features, adj, preprocess, is_training):
     return model(FLAGS.num_layers, preprocess, placeholders, 
@@ -101,8 +104,8 @@ print('Finised in {} seconds'.format(time()-t))
 
 train_degrees   = np.array([FLAGS.degree]*L, dtype=np.int32)
 test_degrees    = np.array([FLAGS.test_degree]*test_L, dtype=np.int32)
-train_sch = PyScheduler(train_adj, labels, L, train_degrees, placeholders, train_d)
-eval_sch  = PyScheduler(full_adj,  labels, test_L, test_degrees,  placeholders)
+train_sch = PyScheduler(train_adj, labels, L, train_degrees, placeholders, train_d, cv=FLAGS.cv)
+eval_sch  = PyScheduler(full_adj,  labels, test_L, test_degrees,  placeholders, cv=FLAGS.test_cv)
 
 
 # Initialize session
