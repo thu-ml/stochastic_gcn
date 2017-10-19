@@ -14,11 +14,11 @@ FLAGS = flags.FLAGS
 
 class VRGCN(GCN):
     def __init__(self, L, preprocess, placeholders, 
-                 features, nbr_features, adj, 
+                 features, nbr_features, adj, cvd,
                  **kwargs):
         super(VRGCN, self).__init__(L, preprocess, placeholders, 
-                                    features, nbr_features,
-                                    adj, **kwargs)
+                                    features, nbr_features, 
+                                    adj, cvd, **kwargs)
 
     def _build_history(self):
         # Create history after each aggregation
@@ -97,6 +97,6 @@ class VRGCN(GCN):
             history = self.history[l]
             agg = VRAggregator(adjs[l], fadjs[l], madjs[l],
                                ifield, ffield,
-                               history, scale, name='agg%d'%l)
+                               history, scale, self.cvd, name='agg%d'%l)
             self.aggregators.append(agg)
 

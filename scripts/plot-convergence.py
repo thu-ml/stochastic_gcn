@@ -24,15 +24,16 @@ sns.set_style("whitegrid")
 #num_runs = 10
 #dir='logs_old'
 
-datasets   = [('citeseer', 10), ('cora', 10), ('pubmed', 10), ('nell', 10), ('ppi', 3), ('reddit', 1)]
+datasets   = [('citeseer', 10), ('cora', 10), ('pubmed', 10), ('nell', 10), ('ppi', 1), ('reddit', 1)]
 #datasets   = ['reddit']
-exps1 = [(20, False, 'True', True,  '#000000', 'Batch'),               # k
+exps1 = [(20, 'False', 'True', True,  '#000000', 'Batch'),               # k
          #(20, False, 'Fast', True,  '#FF0000', 'Batch+Det'),           # r
-         (1,  False, 'True', False, '#777777', 'SGD'),               # 0.5k
-         (1,  False, 'True', True,  '#0000FF',  'SGD+PP'),            # b
+         (1,  'False', 'True', False, '#777777', 'SGD'),               # 0.5k
+         (1,  'False', 'True', True,  '#0000FF',  'SGD+PP'),            # b
          #(1,  False, 'Fast', True,  '#FF00FF',  'SGD+PP+Det'),        # (r, b)
-         (1,  True,  'True', True,  '#00FF00',  'SGD+PP+CV'),         # g
-         (1,  True,  'Fast', True,  '#FFFF00',  'SGD+PP+CV+Det')]     # (r, g)
+         (1,  'True',  'True', True,  '#00FF00',  'SGD+PP+CV'),         # g
+         #(1,  'True',  'Fast', True,  '#FFFF00',  'SGD+PP+CV+Det'),     # (r, g)
+         (1,  'TrueD', 'True', True,  '#FF0000',  'SGD+PP+CV2')]   
 all_exps = [exps1]
 dir='logs'
 
@@ -71,9 +72,9 @@ for ndata, data in enumerate(datasets):
                     lines = f.readlines()
                     for line in lines:
                         if line.find('Epoch') != -1:
-                            line = line.split()
+                            line = line.replace('=', ' ').split()
                             losses.append(float(line[7]))
-                            accs.append(float(line[9]))
+                            accs.append(float(line[12]) if data=='ppi' else float(line[9]))
                             train_losses.append(float(line[3]))
                             N += 1
                             if N > len(my_amt_data):
@@ -91,7 +92,7 @@ for ndata, data in enumerate(datasets):
         # iter - trainloss
         sns.tsplot(data=df, time="iter", unit="run", condition="type", value="train_loss", ax=ax[0,0], legend=False, color=colors)
         # data - trainloss
-        sns.tsplot(data=df, time="data", unit="run", condition="type", value="loss", ax=ax[1,0], legend=False, color=colors)
+        sns.tsplot(data=df, time="data", unit="run", condition="type", value="train_loss", ax=ax[1,0], legend=False, color=colors)
         # iter - loss
         sns.tsplot(data=df, time="iter", unit="run", condition="type", value="loss", ax=ax[0,1], legend=False, color=colors)
         # data - loss
@@ -161,11 +162,13 @@ for ndata, data in enumerate(datasets):
         if data=='ppi' or data=='reddit':
             xlim = (0, 1e7)
         elif data=='pubmed':
-            xlim = (0, 40000)
+            xlim = (0, 4e4)
         elif data=='nell':
-            xlim = (0, 60000)
+            xlim = (0, 6e4)
+        elif data=='citeseer':
+            xlim = (0, 4e4)
         else:
-            xlim = (0, 80000)
+            xlim = (0, 8e4)
         if data=='ppi':
             xlim0 = (0, 800)
         elif data=='reddit':

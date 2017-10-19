@@ -223,16 +223,16 @@ class PlainAggregator(Layer):
     def _call(self, inputs):
         ofield_size = self.adj.dense_shape[0]
 
-        if FLAGS.cv2:
-            inputs = inputs[0]
-            a_self      = inputs[:tf.cast(ofield_size, tf.int32)]
+        #if FLAGS.cv2:
+        #    inputs = inputs[0]
+        #    a_self      = inputs[:tf.cast(ofield_size, tf.int32)]
 
-            # ofield * d
-            a_neighbour = dot(self.adj, inputs, sparse=True)
-            if FLAGS.normalization == 'gcn':
-                return a_neighbour
-            else:
-                return tf.concat((a_self, a_neighbour), axis=1)
+        #    # ofield * d
+        #    a_neighbour = dot(self.adj, inputs, sparse=True)
+        #    if FLAGS.normalization == 'gcn':
+        #        return a_neighbour
+        #    else:
+        #        return tf.concat((a_self, a_neighbour), axis=1)
         if isinstance(inputs, tuple):
             mu, var = inputs
             mu_self      = mu[:tf.cast(ofield_size, tf.int32)]
@@ -280,7 +280,7 @@ class EMAAggregator(Layer):
 
 
 class VRAggregator(Layer):
-    def __init__(self, adj, fadj, madj, ifield, ffield, history, scale, **kwargs):
+    def __init__(self, adj, fadj, madj, ifield, ffield, history, scale, cvd, **kwargs):
         super(VRAggregator, self).__init__(**kwargs)
 
         self.adj           = adj
@@ -290,11 +290,12 @@ class VRAggregator(Layer):
         self.ffield        = ffield
         self.history       = history
         self.scale         = scale
+        self.cvd           = cvd
 
     def _call(self, inputs):
         ofield_size = tf.cast(self.adj.dense_shape[0], tf.int32)
 
-        if FLAGS.cv2:
+        if self.cvd:
             h, mu  = inputs
             #h = inputs
             h_self  = h[:ofield_size]
@@ -412,13 +413,14 @@ class AugmentedDropoutDense(Layer):
 
 
 class Dropout(Layer):
-    def __init__(self, keep_prob, **kwargs):
+    def __init__(self, keep_prob, cvd, **kwargs):
         super(Dropout, self).__init__(**kwargs)
 
         self.keep_prob   = keep_prob
+        self.cvd         = cvd
 
     def _call(self, inputs):
-        if FLAGS.cv2 and isinstance(inputs, tuple):
+        if self.cvd and isinstance(inputs, tuple):
             h, mu = inputs
             return tf.nn.dropout(h, self.keep_prob)
         if isinstance(inputs, tuple):

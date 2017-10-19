@@ -214,7 +214,7 @@ class Model(object):
 
 class GCN(Model):
     def __init__(self, L, preprocess, placeholders, 
-                 features, nbr_features, adj, 
+                 features, nbr_features, adj, cvd,
                  **kwargs):
         super(GCN, self).__init__(**kwargs)
 
@@ -233,6 +233,7 @@ class GCN(Model):
             self.features = features
 
         self.adj = adj
+        self.cvd = cvd
         self.build()
         self.init_counts()
 
@@ -256,7 +257,6 @@ class GCN(Model):
         self.layer_comp = []
 
         if self.preprocess:
-            #self.layers.append(Dropout(1-self.placeholders['dropout']))
             for l in range(FLAGS.num_fc_layers):
                 input_dim = self.input_dim*dim_s if l==0 else FLAGS.hidden1
                 sparse_inputs = self.sparse_mm if l==0 else False
@@ -268,23 +268,15 @@ class GCN(Model):
                                              logging=self.logging,
                                              sparse_inputs=sparse_inputs,
                                              name='dense%d'%cnt, norm=FLAGS.layer_norm))
-                elif FLAGS.cv2:
+                elif self.cvd:
                     self.layers.append(AugmentedDropoutDense(keep_prob=1-self.placeholders['dropout'],
                                              input_dim=input_dim,
                                              output_dim=FLAGS.hidden1,
                                              logging=self.logging,
                                              sparse_inputs=sparse_inputs,
                                              name='dense%d'%cnt, norm=FLAGS.layer_norm))
-                    #self.layers.append(Dropout(1-self.placeholders['dropout']))
-                    #self.layers.append(Dense(input_dim=input_dim,
-                    #                         output_dim=FLAGS.hidden1,
-                    #                         placeholders=self.placeholders,
-                    #                         act=tf.nn.relu,
-                    #                         logging=self.logging,
-                    #                         sparse_inputs=sparse_inputs,
-                    #                         name='dense%d'%cnt, norm=FLAGS.layer_norm))
                 else:
-                    self.layers.append(Dropout(1-self.placeholders['dropout']))
+                    self.layers.append(Dropout(1-self.placeholders['dropout'], self.cvd))
                     self.layers.append(Dense(input_dim=input_dim,
                                              output_dim=FLAGS.hidden1,
                                              placeholders=self.placeholders,
@@ -312,14 +304,14 @@ class GCN(Model):
                                              placeholders=self.placeholders,
                                              logging=self.logging,
                                              name='dense%d'%cnt, norm=layer_norm))
-                elif FLAGS.cv2 and l+1 != self.L:
+                elif self.cvd and l+1 != self.L:
                     self.layers.append(AugmentedDropoutDense(keep_prob=1-self.placeholders['dropout'],
                                              input_dim=input_dim,
                                              output_dim=output_dim,
                                              logging=self.logging,
                                              name='dense%d'%cnt, norm=layer_norm))
                 else:
-                    self.layers.append(Dropout(1-self.placeholders['dropout']))
+                    self.layers.append(Dropout(1-self.placeholders['dropout'], self.cvd))
                     self.layers.append(Dense(input_dim=input_dim,
                                              output_dim=output_dim,
                                              placeholders=self.placeholders,
