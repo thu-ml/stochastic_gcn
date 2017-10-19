@@ -28,11 +28,12 @@ placeholders = {
         'fadj': ['fadj_{}'.format(i) for i in range(L)],
         'fields': ['fields_{}'.format(i) for i in range(L+1)],
         'ffields': ['ffields_{}'.format(i) for i in range(L+1)],
+        'scales': ['scales_{}'.format(i) for i in range(L)],
         'labels': 'labels'
         }
 
 labels = np.zeros((11, 2))
-sch = PyScheduler(adj, labels, 2, [1, 2], placeholders, cv=True)
+sch = PyScheduler(adj, labels, 2, [1, 2], placeholders, 0, cv=True)
 feed_dict = sch.batch(np.array([0], dtype=np.int32))
 
 for k in feed_dict:

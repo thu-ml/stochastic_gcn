@@ -3,7 +3,6 @@
 #include <random>
 #include <algorithm>
 
-std::mt19937 generator;
 uniform_real_distribution<float> u01;
 
 
@@ -17,6 +16,10 @@ Scheduler::Scheduler(float *adj_w, int *adj_i, int *adj_p, int num_data, int num
     visited(num_data, -1), fvisited(num_data, -1)
 {
     this->adj_p.push_back(num_edges);
+}
+
+void Scheduler::seed(int seed) {
+    generator.seed(seed);
 }
 
 void Scheduler::start_batch(int num_data, int *data) {
@@ -38,6 +41,7 @@ void Scheduler::expand(int degree) {
     fedg_s.clear();
     fedg_t.clear();
     fedg_w.clear();
+    scales.clear();
 
     // Add neighbour edges
     for (int i = 0; i < field.size(); i++) {
@@ -47,6 +51,8 @@ void Scheduler::expand(int degree) {
         int   adj_range = adj_p[s+1] - adj_p[s];
         int   adj_size  = min(adj_range, degree);
         float scale = (float)adj_range / adj_size;
+        scales.push_back(1.0 / sqrt(scale));
+        
         // cout << scale << endl;
 
         for (int it = 0; it < adj_size; it++) {

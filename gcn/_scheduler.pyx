@@ -13,7 +13,8 @@ cdef extern from "scheduler.h":
         Scheduler(float*, int*, int*, int, int, int, bool) except +
         void start_batch(int, int*)
         void expand(int)
-        vector[float] adj_w, edg_w, medg_w, fedg_w
+        void seed(int)
+        vector[float] adj_w, edg_w, medg_w, fedg_w, scales
         vector[int] field, new_field, ffield, adj_i, adj_p, edg_s, edg_t, fedg_s, fedg_t, visited
         bool cv
 
@@ -31,12 +32,13 @@ cdef class PyScheduler:
     cdef int start
     cdef float t
 
-    def __init__(self, adj, labels, L, degrees, placeholders, data=None, cv=False):
+    def __init__(self, adj, labels, L, degrees, placeholders, seed, data=None, cv=False):
         cdef float[:] ad = adj.data
         cdef int[:]   ai = adj.indices
         cdef int[:]   ap = adj.indptr
         self.c_sch = Scheduler(&ad[0], &ai[0], &ap[0],
                                labels.shape[0], adj.data.shape[0], L, cv)
+        self.c_sch.seed(seed)
         self.labels = labels
         self.data = data
         self.degrees = degrees
@@ -58,6 +60,7 @@ cdef class PyScheduler:
         adjs     = []
         madjs    = []
         fadjs    = []
+        scales   = []
         self.c_sch.start_batch(len(data), &dv[0])
         for l in range(self.L):
             self.c_sch.expand(self.degrees[self.L-l-1])
@@ -67,6 +70,11 @@ cdef class PyScheduler:
             field = np.zeros((fsz), dtype=np.int32)
             copy_int(field, self.c_sch.field.data(), fsz)
             fields.append(field)
+
+            ssz = self.c_sch.scales.size()
+            scale = np.zeros((ssz), dtype=np.float32)
+            copy_float(scale, self.c_sch.scales.data(), ssz)
+            scales.append(scale)
 
             # adjs 
             ne    = self.c_sch.edg_s.size()
@@ -114,7 +122,8 @@ cdef class PyScheduler:
         adjs.reverse()
         madjs.reverse()
         fadjs.reverse()
-        return self.get_feed_dict(fields, ffields, adjs, madjs, fadjs)
+        scales.reverse()
+        return self.get_feed_dict(fields, ffields, adjs, madjs, fadjs, scales)
 
     def minibatch(self, batch_size):
         if self.start == self.data.shape[0]:
@@ -124,9 +133,10 @@ cdef class PyScheduler:
         self.start = end
         return self.batch(batch)
 
-    def get_feed_dict(self, fields, ffields, adjs, madjs, fadjs):
+    def get_feed_dict(self, fields, ffields, adjs, madjs, fadjs, scales):
         labels = self.labels[fields[-1]]
         feed_dict = {self.placeholders['adj'][i] : adjs[i] for i in range(self.L)}
+        feed_dict.update({self.placeholders['scales'][i]: scales[i] for i in range(len(scales))})
         if self.c_sch.cv:
             feed_dict.update({self.placeholders['madj'][i] : madjs[i] for i in range(len(madjs))})
             feed_dict.update({self.placeholders['fadj'][i] : fadjs[i] for i in range(len(fadjs))})

@@ -92,6 +92,11 @@ def MyLayerNorm(x):
     return tf.nn.batch_normalization(x, mean, variance, offset, scale, 1e-9)
 
 
+def MyLayerNorm2(x, offset, scale):
+    mean, variance = tf.nn.moments(x, axes=[1], keep_dims=True)
+    return tf.nn.batch_normalization(x, mean, variance, offset, scale, 1e-9)
+
+
 class Dense(Layer):
     """Dense layer."""
     def __init__(self, input_dim, output_dim, placeholders, sparse_inputs=False,
@@ -218,6 +223,16 @@ class PlainAggregator(Layer):
     def _call(self, inputs):
         ofield_size = self.adj.dense_shape[0]
 
+        if FLAGS.cv2:
+            inputs = inputs[0]
+            a_self      = inputs[:tf.cast(ofield_size, tf.int32)]
+
+            # ofield * d
+            a_neighbour = dot(self.adj, inputs, sparse=True)
+            if FLAGS.normalization == 'gcn':
+                return a_neighbour
+            else:
+                return tf.concat((a_self, a_neighbour), axis=1)
         if isinstance(inputs, tuple):
             mu, var = inputs
             mu_self      = mu[:tf.cast(ofield_size, tf.int32)]
@@ -265,7 +280,7 @@ class EMAAggregator(Layer):
 
 
 class VRAggregator(Layer):
-    def __init__(self, adj, fadj, madj, ifield, ffield, history, **kwargs):
+    def __init__(self, adj, fadj, madj, ifield, ffield, history, scale, **kwargs):
         super(VRAggregator, self).__init__(**kwargs)
 
         self.adj           = adj
@@ -274,12 +289,33 @@ class VRAggregator(Layer):
         self.ifield        = ifield
         self.ffield        = ffield
         self.history       = history
+        self.scale         = scale
 
     def _call(self, inputs):
         ofield_size = tf.cast(self.adj.dense_shape[0], tf.int32)
-        dims        = tf.cast(tf.shape(inputs)[1], tf.int32)
 
-        if isinstance(inputs, tuple):
+        if FLAGS.cv2:
+            h, mu  = inputs
+            #h = inputs
+            h_self  = h[:ofield_size]
+
+            mu_small = tf.gather(self.history[0], self.ifield)
+            mu_large = tf.gather(self.history[0], self.ffield)
+            z        = h - mu
+            delta_mu = mu - mu_small
+            mu_mean  = dot(self.fadj, mu_large, sparse=True)
+
+            h_neighbour = dot(self.adj, z, sparse=True) * tf.expand_dims(self.scale, 1) + \
+                          dot(self.adj, delta_mu, sparse=True) + mu_mean
+            self.new_history = [mu]
+            #h_neighbour = dot(self.adj, h, sparse=True)
+            #self.new_history = [h]
+
+            if FLAGS.normalization == 'gcn':
+                return h_neighbour
+            else:
+                return tf.concat((h_self, h_neighbour), axis=1)
+        elif isinstance(inputs, tuple):
             mu, var  = inputs
             mu_self  = mu[:ofield_size]
             var_self = var[:ofield_size]
@@ -324,6 +360,56 @@ class VRAggregator(Layer):
                 return tf.concat((a_self, a_neighbour), axis=1)
 
 
+class AugmentedDropoutDense(Layer):
+    """Dense layer."""
+    def __init__(self, keep_prob, input_dim, output_dim, sparse_inputs=False,
+                 act=tf.nn.relu, norm=True, **kwargs):
+        super(AugmentedDropoutDense, self).__init__(**kwargs)
+
+        self.act = act
+        self.sparse_inputs = sparse_inputs
+        self.keep_prob = keep_prob
+        self.norm = norm
+
+        with tf.variable_scope(self.name + '_vars'):
+            self.vars['weights'] = glorot([input_dim, output_dim],
+                                          name='weights')
+            if norm:
+                self.vars['offset'] = zeros([1, output_dim], name='offset')
+                self.vars['scale']  = ones ([1, output_dim], name='scale')
+
+        if self.logging:
+            self._log_vars()
+
+    def _call(self, inputs):
+        print('AugmentedDropoutDense')
+        if isinstance(inputs, tuple):
+            x, mu = inputs
+        else:
+            x, mu = inputs, inputs
+
+        if isinstance(inputs, tf.SparseTensor):
+            x = sparse_dropout(x, self.keep_prob)
+        else:
+            x = tf.nn.dropout(x, self.keep_prob)
+        #x = inputs
+        # Dropout
+
+        # transform
+        x  = dot(x, self.vars['weights'], sparse=self.sparse_inputs)
+        mu = dot(mu, self.vars['weights'], sparse=self.sparse_inputs)
+
+        with tf.variable_scope(self.name + '_vars'):
+            if self.norm:
+                #x  = MyLayerNorm(x)
+                x  = MyLayerNorm2(x,  self.vars['offset'], self.vars['scale'])
+                mu = MyLayerNorm2(mu, self.vars['offset'], self.vars['scale'])
+
+        x  = self.act(x)
+        mu = self.act(mu)
+        return (x, tf.stop_gradient(mu))
+
+
 class Dropout(Layer):
     def __init__(self, keep_prob, **kwargs):
         super(Dropout, self).__init__(**kwargs)
@@ -331,6 +417,9 @@ class Dropout(Layer):
         self.keep_prob   = keep_prob
 
     def _call(self, inputs):
+        #if FLAGS.cv2:
+        #    h, mu = inputs
+        #    return tf.nn.dropout(h, self.keep_prob)
         if isinstance(inputs, tuple):
             mu, var = inputs
             x = mu + tf.random_normal(tf.shape(var)) * tf.sqrt(var + 1e-10)

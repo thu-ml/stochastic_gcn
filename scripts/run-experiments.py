@@ -1,6 +1,10 @@
 import os, sys
 
+<<<<<<< HEAD
 datasets    = ['citeseer', 'cora', 'pubmed', 'nell', 'ppi']
+=======
+datasets    = ['reddit']
+>>>>>>> eb4a659a13c4f7ae0867c67d7f6ba71cb9c9fe52
 gcn_datasets = set(['cora', 'citeseer', 'pubmed', 'nell'])
 preprocess  = ['True', 'False']
 dropout = [True, False]
