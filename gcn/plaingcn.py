@@ -14,11 +14,11 @@ FLAGS = flags.FLAGS
 
 class PlainGCN(GCN):
     def __init__(self, L, preprocess, placeholders, 
-                 features, nbr_features, adj,
+                 features, nbr_features, adj, cvd,
                  **kwargs):
         super(PlainGCN, self).__init__(L, preprocess, placeholders, 
                                     features, nbr_features,
-                                    adj, **kwargs)
+                                    adj, cvd, **kwargs)
 
     def _build_history(self):
         pass

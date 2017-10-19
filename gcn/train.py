@@ -52,7 +52,7 @@ flags.DEFINE_float('polyak_decay', 0, 'Decay for model averaging')
 flags.DEFINE_bool('load', False, 'Load the model')
 
 flags.DEFINE_bool('det_dropout', False, 'Determinstic dropout')
-flags.DEFINE_bool('cv2', False, 'CV2')
+flags.DEFINE_bool('cvd', False, 'CV for Dropout. Only useful when --cv is present.')
 
 flags.DEFINE_integer('seed', 1, 'Random seed')
 flags.DEFINE_integer('max_degree', -1, 'Subsample the input. Maximum number of degree. For GraphSAGE.')
@@ -93,16 +93,16 @@ print('Building model...')
 train_model = VRGCN if FLAGS.cv else PlainGCN
 test_model  = VRGCN if FLAGS.test_cv else PlainGCN
 
-def model_func(model, nbr_features, adj, preprocess, is_training):
+def model_func(model, nbr_features, adj, preprocess, is_training, cvd):
     return model(FLAGS.num_layers, preprocess, placeholders, 
                  features, nbr_features,
-                 adj, multitask=multitask, is_training=is_training)
+                 adj, cvd, multitask=multitask, is_training=is_training)
 
 create_model = tf.make_template('model', model_func)
 train_model  = create_model(train_model, nbr_features=train_features, adj=train_adj, 
-                                         preprocess=FLAGS.preprocess, is_training=True)
+                                         preprocess=FLAGS.preprocess, is_training=True, cvd=FLAGS.cvd)
 test_model   = create_model(test_model,  nbr_features=test_features, adj=full_adj,
-                                         preprocess=FLAGS.test_preprocess, is_training=False)
+                                         preprocess=FLAGS.test_preprocess, is_training=False, cvd=False)
 
 print('Finised in {} seconds'.format(time()-t))
 
@@ -300,6 +300,9 @@ def Test():
           "accuracy=", "{:.5f}".format(test_acc),
           "mi F1={:.5f} ma F1={:.5f} ".format(micro, macro),
           "time=", "{:.5f}".format(test_duration))
+    remaining = np.array(list(set(range(num_data)) - set(test_d)), dtype=np.int32)
+    if FLAGS.test_cv:
+        evaluate(remaining)
 
 
 SGDTrain()
@@ -307,7 +310,8 @@ SGDTrain()
 #Analyze()
 #Analyze2()
 
-for i in range(FLAGS.num_layers + 1):
+num_runs = FLAGS.num_layers + 1 if FLAGS.test_cv else 1
+for i in range(num_runs):
     Test()
 
 #def output_info(sch, verbose=False, val=False):
