@@ -21,7 +21,7 @@ class PlainGCN(GCN):
                                     adj, cvd, **kwargs)
 
     def _build_history(self):
-        pass
+        self.history = []
 
     def get_data(self, feed_dict):
         input = self.features 

@@ -171,8 +171,12 @@ class Model(object):
         # Trainable variables + layer norm variables
         variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
         self.vars = variables
+        self.history_vars = [var[0] for var in self.history]
         print('Model variables')
         for k in self.vars:
+            print(k.name, k.get_shape())
+        print('History variables')
+        for k in self.history_vars:
             print(k.name, k.get_shape())
 
         # Build metrics
@@ -188,7 +192,8 @@ class Model(object):
         else:
             self.train_op = tf.group(*self.update_history)
             self.test_op  = self.train_op
-        self.grads  = tf.gradients(self.loss, self.vars)
+
+        self.grads  = tf.gradients(self.loss, self.vars[0])
 
     def _predict(self):
         if self.multitask:
@@ -199,14 +204,17 @@ class Model(object):
     def save(self, sess=None):
         if not sess:
             raise AttributeError("TensorFlow session not provided.")
-        saver = tf.train.Saver(self.vars)
+        saver = tf.train.Saver(self.vars + self.history_vars)
         save_path = saver.save(sess, "tmp/%s.ckpt" % self.name)
         print("Model saved in file: %s" % save_path)
 
-    def load(self, sess=None):
+    def load(self, sess=None, load_history=False):
         if not sess:
             raise AttributeError("TensorFlow session not provided.")
-        saver = tf.train.Saver(self.vars)
+        if not load_history:
+            saver = tf.train.Saver(self.vars)
+        else:
+            saver = tf.train.Saver(self.vars + self.history_vars)
         save_path = "tmp/%s.ckpt" % self.name
         saver.restore(sess, save_path)
         print("Model restored from file: %s" % save_path)

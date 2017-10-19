@@ -57,12 +57,18 @@ flags.DEFINE_bool('cvd', False, 'CV for Dropout. Only useful when --cv is presen
 flags.DEFINE_integer('seed', 1, 'Random seed')
 flags.DEFINE_integer('max_degree', -1, 'Subsample the input. Maximum number of degree. For GraphSAGE.')
 
+flags.DEFINE_bool('gradvar', False, 'Output gradient variance')
+
 tf.set_random_seed(FLAGS.seed)
 np.random.seed(FLAGS.seed)
 
 # Load data
 num_data, train_adj, full_adj, features, train_features, test_features, labels, train_d, val_d, test_d = \
         load_data(FLAGS.dataset)
+if FLAGS.gradvar:
+    print('Analyze mode...')
+    full_adj = train_adj.copy()
+    test_features = train_features.copy()
 
 print('Features shape = {}, training edges = {}, testing edges = {}'.format(features.shape, train_adj.nnz, full_adj.nnz))
 print('{} training data, {} validation data, {} testing data.'.format(
@@ -157,8 +163,9 @@ def SGDTrain():
     amt_data = 0
 
     if FLAGS.load:
-        train_model.load(sess)
+        train_model.load(sess, load_history=FLAGS.gradvar)
         test_model.load(sess)
+        sess.run([h2.assign(h1) for h1, h2 in zip(train_model.history_vars, test_model.history_vars)])
         return 
 
     print('Start training...')
@@ -215,42 +222,43 @@ def SGDTrain():
     train_model.save(sess)
     
 
-def Analyze():
+def GradientVariance():
     # Testing
     batch = train_d[:FLAGS.batch_size]
 
-    num_vars = len(model.vars)
     full_times = 100
     full_preds = Stat()
-    full_grads = [Stat() for _ in range(num_vars)]
+    full_grads = Stat()
     for i in range(full_times):
         feed_dict = eval_sch.batch(batch)
         feed_dict[placeholders['dropout']] = FLAGS.dropout
-        pred, grad = model.get_pred_and_grad(sess, feed_dict)
+        pred, grad = test_model.get_pred_and_grad(sess, feed_dict)
         full_preds.add(pred)
-        for j in range(num_vars):
-            full_grads[j].add(grad[j])
-    print('Full stdev = {}'.format(np.mean(full_preds.std())))
-    for i in range(num_vars):
-        print('Full {} stdev = {}'.format(model.vars[i].name, np.mean(full_grads[i].std())))
+        full_grads.add(grad)
 
-    part_times = 1000
+    full_preds_m = np.mean(np.abs(full_preds.mean()))
+    full_grads_m = np.mean(np.abs(full_grads.mean()))
+    print('Full pred stdev = {}'.format(
+        np.mean(full_preds.std())/full_preds_m))
+    print('Full grad stdev = {}'.format(
+        np.mean(full_grads.std())/full_grads_m))
+
+    part_times = 100
     part_preds = Stat()
-    part_grads = [Stat() for _ in range(num_vars)]
+    part_grads = Stat()
     for i in range(part_times):
         feed_dict = train_sch.batch(batch)
         feed_dict[placeholders['dropout']] = FLAGS.dropout
-        feed_dict[placeholders['is_training']] = True
-        pred, grad = model.get_pred_and_grad(sess, feed_dict, is_training=True)
+        pred, grad = train_model.get_pred_and_grad(sess, feed_dict)
         part_preds.add(pred)
-        for j in range(num_vars):
-            part_grads[j].add(grad[j])
-    print('Part bias = {}'.format(np.mean(np.abs(part_preds.mean()-full_preds.mean()))))
-    print('Part stdev = {}'.format(np.mean(part_preds.std())))
-    for i in range(num_vars):
-        print('Part {} bias = {}'.format(model.vars[i].name, 
-            np.mean(np.abs(full_grads[i].mean() - part_grads[i].mean()))))
-        print('Part {} stdev = {}'.format(model.vars[i].name, np.mean(part_grads[i].std())))
+        part_grads.add(grad)
+    print('Part pred bias = {}'.format(
+        np.mean(np.abs(part_preds.mean()-full_preds.mean()))/full_preds_m))
+    print('Part pred stdev = {}'.format(np.mean(part_preds.std())/full_preds_m))
+    print('Part grad bias = {}'.format(np.mean(np.abs(full_grads.mean()-part_grads.mean()))/full_grads_m))
+    print('Part grad stdev = {}'.format(np.mean(part_grads.std())/full_grads_m))
+    print(full_grads_m, np.mean(part_grads.std()), np.mean(np.abs(part_grads.mean())))
+    #print(full_grads.vals[0][:5], part_grads.vals[0][:5])
 
 
 def Analyze2():
@@ -307,6 +315,8 @@ def Test():
 
 SGDTrain()
 
+if FLAGS.gradvar:
+    GradientVariance()
 #Analyze()
 #Analyze2()
 
