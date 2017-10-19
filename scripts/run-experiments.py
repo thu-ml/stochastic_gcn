@@ -1,10 +1,11 @@
 import os, sys
 
-datasets    = ['citeseer', 'ppi']
+datasets    = ['citeseer', 'cora', 'pubmed', 'nell', 'ppi']
 gcn_datasets = set(['cora', 'citeseer', 'pubmed', 'nell'])
 preprocess  = ['True', 'False']
 dropout = [True, False]
-deg_cv_dropout_preprocess   = [(20, False, 'True', True), (20, False, 'True', False), 
+deg_cv_dropout_preprocess   = [(20, False, 'True', True), (20, False, 'Fast', True), 
+                               (20, False, 'True', False), 
                                (1, False, 'True', False), 
                                (1, False, 'True', True), (1, False, 'Fast', True), 
                                (1, True, 'True', True), (1, True, 'Fast', True)]
@@ -12,7 +13,9 @@ deg_cv_dropout_preprocess   = [(20, False, 'True', True), (20, False, 'True', Fa
 f = open('run.sh', 'w')
 for data in datasets:
     for deg, cv, d, pp in deg_cv_dropout_preprocess:
-        for run in range(3):
+        if pp==False and data=='nell':
+            continue
+        for run in range(3, 10):
             dropout_str = ''
             if d=='Fast':
                 dropout_str = '--det_dropout'
