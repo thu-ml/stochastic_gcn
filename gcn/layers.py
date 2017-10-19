@@ -385,10 +385,13 @@ class AugmentedDropoutDense(Layer):
         print('AugmentedDropoutDense')
         if isinstance(inputs, tuple):
             x, mu = inputs
-            x = tf.nn.dropout(x, self.keep_prob)
         else:
-            mu = inputs
-            x  = tf.nn.dropout(inputs, self.keep_prob)
+            x, mu = inputs, inputs
+
+        if isinstance(inputs, tf.SparseTensor):
+            x = sparse_dropout(x, self.keep_prob)
+        else:
+            x = tf.nn.dropout(x, self.keep_prob)
         #x = inputs
         # Dropout
 
