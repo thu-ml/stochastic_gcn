@@ -4,10 +4,11 @@ datasets    = ['citeseer', 'cora', 'pubmed', 'nell', 'ppi', 'reddit']
 gcn_datasets = set(['cora', 'citeseer', 'pubmed', 'nell'])
 preprocess  = ['True', 'False']
 dropout = [True, False]
-deg_cv_dropout_preprocess   = [(20, False, 'True', True), (20, False, 'True', False), 
-                               (1, False, 'True', False), 
-                               (1, False, 'True', True), (1, False, 'Fast', True), 
-                               (1, True, 'True', True), (1, True, 'Fast', True)]
+deg_cv_dropout_preprocess   = [#(20, False, 'True', True), (20, False, 'True', False), 
+                               #(1, False, 'True', False), 
+                               #(1, False, 'True', True), (1, False, 'Fast', True), 
+                               #(1, True, 'True', True), (1, True, 'Fast', True),
+                               (20, False, 'False', True), (1, False, 'False', False), (1, False, 'False', True), (1, True, 'False', True)]
 test_exps = [('Exact', '--test_degree 10000'),
         ('NS',    '--test_degree 1 --nopreprocess --notest_preprocess'),
         ('NSPP',  '--test_degree 1'),
@@ -21,6 +22,8 @@ for data in datasets:
             dropout_str = ''
             if d=='Fast':
                 dropout_str = '--det_dropout'
+            elif d=='False':
+                dropout_str = '--dropout 0'
             log_file = 'logs/{}_pp{}_dropout{}_deg{}_cv{}_run{}.log'.format(data, pp, d, deg, cv, run)
             if data in set(['cora', 'citeseer', 'pubmed', 'nell']):
                 ndata  = 50000
