@@ -93,9 +93,10 @@ class VRGCN(GCN):
         for l in range(self.L):
             ifield  = self.placeholders['fields'][l]
             ffield  = self.placeholders['ffields'][l]
+            scale   = self.placeholders['scales'][l]
             history = self.history[l]
             agg = VRAggregator(adjs[l], fadjs[l], madjs[l],
                                ifield, ffield,
-                               history, name='agg%d'%l)
+                               history, scale, name='agg%d'%l)
             self.aggregators.append(agg)
 

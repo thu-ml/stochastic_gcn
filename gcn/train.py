@@ -52,8 +52,10 @@ flags.DEFINE_float('polyak_decay', 0, 'Decay for model averaging')
 flags.DEFINE_bool('load', False, 'Load the model')
 
 flags.DEFINE_bool('det_dropout', False, 'Determinstic dropout')
+flags.DEFINE_bool('cv2', False, 'CV2')
 
 flags.DEFINE_integer('seed', 1, 'Random seed')
+flags.DEFINE_integer('max_degree', -1, 'Subsample the input. Maximum number of degree. For GraphSAGE.')
 
 tf.set_random_seed(FLAGS.seed)
 np.random.seed(FLAGS.seed)
@@ -78,6 +80,8 @@ placeholders = {
     'fields': [tf.placeholder(tf.int32, shape=(None),name='field_%d'%l) 
                for l in range(L+1)],
     'ffields': [tf.placeholder(tf.int32, shape=(None),name='ffield_%d'%l) 
+               for l in range(L)],
+    'scales': [tf.placeholder(tf.float32, shape=(None),name='scale_%d'%l) 
                for l in range(L)],
     'labels': tf.placeholder(tf.float32, shape=(None, labels.shape[1]), 
               name='labels'),

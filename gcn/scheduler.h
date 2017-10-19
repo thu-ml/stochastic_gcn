@@ -18,6 +18,7 @@ public:
     vector<int>  adj_i, adj_p; vector<float> adj_w;
     int L, num_data, mode; 
     vector<int>  field, ffield, new_field;
+    vector<float> scales;
 
     vector<int> edg_s, edg_t; vector<float> edg_w, medg_w;
     vector<int> fedg_s, fedg_t; vector<float> fedg_w;

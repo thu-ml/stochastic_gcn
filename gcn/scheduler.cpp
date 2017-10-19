@@ -41,6 +41,7 @@ void Scheduler::expand(int degree) {
     fedg_s.clear();
     fedg_t.clear();
     fedg_w.clear();
+    scales.clear();
 
     // Add neighbour edges
     for (int i = 0; i < field.size(); i++) {
@@ -50,6 +51,8 @@ void Scheduler::expand(int degree) {
         int   adj_range = adj_p[s+1] - adj_p[s];
         int   adj_size  = min(adj_range, degree);
         float scale = (float)adj_range / adj_size;
+        scales.push_back(1.0 / sqrt(scale));
+        
         // cout << scale << endl;
 
         for (int it = 0; it < adj_size; it++) {

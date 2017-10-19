@@ -185,11 +185,15 @@ def load_gcn_data(dataset_str):
 
 def load_graphsage_data(prefix, normalize=True):
     # Save normalized version
-    npz_file = prefix + '.npz'
+    if FLAGS.max_degree==-1:
+        npz_file = prefix + '.npz'
+    else:
+        npz_file = '{}_deg{}.npz'.format(prefix, FLAGS.max_degree)
+
     if os.path.exists(npz_file):
         start_time = time()
         print('Found preprocessed dataset {}, loading...'.format(npz_file))
-        data = np.load(prefix + '.npz')
+        data = np.load(npz_file)
         num_data     = data['num_data']
         feats        = data['feats']
         train_feats  = data['train_feats']
@@ -230,6 +234,11 @@ def load_graphsage_data(prefix, normalize=True):
     
         edges      = [(id_map[edge[0]], id_map[edge[1]]) for edge in G.edges_iter()]
         num_data   = len(id_map)
+
+        if FLAGS.max_degree != -1:
+            print('Subsampling edges...')
+            edges = subsample_edges(edges, num_data, FLAGS.max_degree)
+
         val_data   = np.array([id_map[n] for n in G.nodes_iter() 
                                  if G.node[n]['val']], dtype=np.int32)
         test_data  = np.array([id_map[n] for n in G.nodes_iter() 
@@ -291,6 +300,7 @@ def load_graphsage_data(prefix, normalize=True):
 
         print("Done. {} seconds.".format(time()-start_time))
         with open(npz_file, 'wb') as fwrite:
+            print('Saving {} edges'.format(full_adj.nnz))
             np.savez(fwrite, num_data=num_data, 
                              train_adj_data=train_adj.data, train_adj_indices=train_adj.indices, train_adj_indptr=train_adj.indptr, train_adj_shape=train_adj.shape,
                              full_adj_data=full_adj.data, full_adj_indices=full_adj.indices, full_adj_indptr=full_adj.indptr, full_adj_shape=full_adj.shape,
@@ -494,3 +504,17 @@ def calc_f1(y_pred, y_true, multitask):
         y_pred = np.argmax(y_pred, axis=1)
     return f1_score(y_true, y_pred, average="micro"), \
            f1_score(y_true, y_pred, average="macro")
+
+
+def subsample_edges(edges, num_data, max_degree):
+    edges = np.array(edges, dtype=np.int32)
+    np.random.shuffle(edges)
+    degree = np.zeros(num_data, dtype=np.int32)
+
+    new_edges = []
+    for e in edges:
+        if degree[e[0]]<max_degree and degree[e[1]]<max_degree:
+            new_edges.append((e[0], e[1]))
+            degree[e[0]]+=1
+            degree[e[1]]+=1
+    return new_edges
