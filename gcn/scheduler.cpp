@@ -51,6 +51,7 @@ void Scheduler::expand(int degree) {
         int   adj_range = adj_p[s+1] - adj_p[s];
         int   adj_size  = min(adj_range, degree);
         float scale = (float)adj_range / adj_size;
+        if (adj_range==0) scale = 1;
         scales.push_back(1.0 / sqrt(scale));
         
         // cout << scale << endl;
