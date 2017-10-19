@@ -298,6 +298,7 @@ class VRAggregator(Layer):
             h, mu  = inputs
             #h = inputs
             h_self  = h[:ofield_size]
+            mu_self  = mu[:ofield_size]
 
             mu_small = tf.gather(self.history[0], self.ifield)
             mu_large = tf.gather(self.history[0], self.ffield)
@@ -305,16 +306,16 @@ class VRAggregator(Layer):
             delta_mu = mu - mu_small
             mu_mean  = dot(self.fadj, mu_large, sparse=True)
 
-            h_neighbour = dot(self.adj, z, sparse=True) * tf.expand_dims(self.scale, 1) + \
-                          dot(self.adj, delta_mu, sparse=True) + mu_mean
+            mu_neighbour = dot(self.adj, delta_mu, sparse=True) + mu_mean
+            h_neighbour = dot(self.adj, z, sparse=True) * tf.expand_dims(self.scale, 1) + mu_neighbour
+                          
             self.new_history = [mu]
-            #h_neighbour = dot(self.adj, h, sparse=True)
-            #self.new_history = [h]
 
             if FLAGS.normalization == 'gcn':
-                return h_neighbour
+                return (h_neighbour, mu_neighbour)
             else:
-                return tf.concat((h_self, h_neighbour), axis=1)
+                return (tf.concat((h_self, h_neighbour), axis=1),
+                        tf.concat((mu_self, mu_neighbour), axis=1))
         elif isinstance(inputs, tuple):
             mu, var  = inputs
             mu_self  = mu[:ofield_size]
@@ -417,9 +418,9 @@ class Dropout(Layer):
         self.keep_prob   = keep_prob
 
     def _call(self, inputs):
-        #if FLAGS.cv2:
-        #    h, mu = inputs
-        #    return tf.nn.dropout(h, self.keep_prob)
+        if FLAGS.cv2 and isinstance(inputs, tuple):
+            h, mu = inputs
+            return tf.nn.dropout(h, self.keep_prob)
         if isinstance(inputs, tuple):
             mu, var = inputs
             x = mu + tf.random_normal(tf.shape(var)) * tf.sqrt(var + 1e-10)
