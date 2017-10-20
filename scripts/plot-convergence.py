@@ -26,14 +26,18 @@ sns.set_style("whitegrid")
 
 datasets   = [('citeseer', 10), ('cora', 10), ('pubmed', 10), ('nell', 10), ('ppi', 1), ('reddit', 1)]
 #datasets   = ['reddit']
-exps1 = [(20, 'False', 'True', True,  '#000000', 'Batch'),               # k
-         #(20, False, 'Fast', True,  '#FF0000', 'Batch+Det'),           # r
-         (1,  'False', 'True', False, '#777777', 'SGD'),               # 0.5k
-         (1,  'False', 'True', True,  '#0000FF',  'SGD+PP'),            # b
-         #(1,  False, 'Fast', True,  '#FF00FF',  'SGD+PP+Det'),        # (r, b)
-         (1,  'True',  'True', True,  '#00FF00',  'SGD+PP+CV'),         # g
-         #(1,  'True',  'Fast', True,  '#FFFF00',  'SGD+PP+CV+Det'),     # (r, g)
-         (1,  'TrueD', 'True', True,  '#FF0000',  'SGD+PP+CV2')]   
+#exps1 = [(20, 'False', 'True', True,  '#000000', 'Exact'),               # k
+#         #(20, False, 'Fast', True,  '#FF0000', 'Exact+Det'),           # r
+#         (1,  'False', 'True', False, '#777777', 'NS'),               # 0.5k
+#         (1,  'False', 'True', True,  '#0000FF',  'NS+PP'),            # b
+#         #(1,  False, 'Fast', True,  '#FF00FF',  'NS+PP+Det'),        # (r, b)
+#         (1,  'True',  'True', True,  '#00FF00',  'NS+PP+CV'),         # g
+#         #(1,  'True',  'Fast', True,  '#FFFF00',  'NS+PP+CV+Det'),     # (r, g)
+#         (1,  'TrueD', 'True', True,  '#FF0000',  'NS+PP+CVD')]   
+exps1 = [(20, 'False', 'False', True,  '#000000', 'Exact'),
+         (1,  'False', 'False', False, '#777777', 'NS'),
+         (1,  'False', 'False', True,  '#0000FF',  'NS+PP'),
+         (1,  'True',  'False', True,  '#00FF00',  'NS+PP+CV')]
 all_exps = [exps1]
 dir='logs'
 
