@@ -226,7 +226,7 @@ def GradientVariance():
     # Testing
     batch = train_d[:FLAGS.batch_size]
 
-    full_times = 100
+    full_times = 1000
     full_preds = Stat()
     full_grads = Stat()
     for i in range(full_times):
@@ -243,7 +243,7 @@ def GradientVariance():
     print('Full grad stdev = {}'.format(
         np.mean(full_grads.std())/full_grads_m))
 
-    part_times = 100
+    part_times = 1000
     part_preds = Stat()
     part_grads = Stat()
     for i in range(part_times):

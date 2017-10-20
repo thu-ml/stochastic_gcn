@@ -8,17 +8,31 @@ deg_cv_dropout_preprocess   = [#(20, False, 'True', True), (20, False, 'True', F
                                #(1, False, 'True', False), 
                                #(1, False, 'True', True), (1, False, 'Fast', True), 
                                #(1, True, 'True', True), (1, True, 'Fast', True),
-                               (20, False, 'False', True), (1, False, 'False', False), (1, False, 'False', True), (1, True, 'False', True)]
+                               (20, 'False', 'False', True), (1, 'False', 'False', False), (1, 'False', 'False', True), (1, 'True', 'False', True)]
 test_exps = [('Exact', '--test_degree 10000'),
         ('NS',    '--test_degree 1 --nopreprocess --notest_preprocess'),
         ('NSPP',  '--test_degree 1'),
         ('NSCV',  '--test_degree 1 --cv --test_cv')]
 
+var_exps = [('VarTrainCV',  '--test_degree=10000 --dropout 0 --cv --degree=1'),
+            ('VarNS',       '--test_degree=10000 --dropout 0 --load --gradvar --nopreprocess --degree=1'),
+            ('VarNSPP',     '--test_degree=10000 --dropout 0 --load --gradvar --degree=1'),
+            ('VarCV',       '--test_degree=10000 --dropout 0 --load --gradvar --degree=1 --cv'),
+            ('DVarTrainCV', '--test_degree=10000 --cv --degree=1'),
+            ('DVarNS',      '--test_degree=10000 --load --gradvar --nopreprocess --degree=1'),
+            ('DVarNSPP',    '--test_degree=10000 --load --gradvar --degree=1'),
+            ('DVarCV',      '--test_degree=10000 --load --gradvar --degree=1 --cv'),
+            ('DVarTrainCV', '--test_degree=10000 --cv --cvd --degree=1'),
+            ('DVarCVD',     '--test_degree=10000 --load --gradvar --degree=1 --cv --cvd')]
+
 f = open('run.sh', 'w')
 ftest = open('test.sh', 'w')
-for data, n_runs in datasets:
+fvar = open('var.sh', 'w')
+for data, n_runs in datasets_runs:
     for deg, cv, d, pp in deg_cv_dropout_preprocess:
-        for run in range(1):
+        if data=='nell' and not pp:
+            continue
+        for run in range(n_runs):
             dropout_str = ''
             if d=='Fast':
                 dropout_str = '--det_dropout'
@@ -53,4 +67,9 @@ for data, n_runs in datasets:
         log_file = 'logs/test_{}_{}.log'.format(data, name)
         command = 'stdbuf -o 0 sh config/{}.config --load {} | tee {}'.format(data, param, log_file)
         ftest.write(command+'\n')
+
+    for name, param in var_exps:
+        log_file = 'logs/{}_{}.log'.format(data, name)
+        command = 'stdbuf -o 0 sh config/{}.config {} | tee {}'.format(data, param, log_file)
+        fvar.write(command+'\n')
 
