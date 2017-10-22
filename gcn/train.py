@@ -53,6 +53,7 @@ flags.DEFINE_bool('load', False, 'Load the model')
 
 flags.DEFINE_bool('det_dropout', False, 'Determinstic dropout')
 flags.DEFINE_bool('cvd', False, 'CV for Dropout. Only useful when --cv is present.')
+flags.DEFINE_bool('test_cvd', False, 'CV for Dropout. Only useful when --cv is present.')
 
 flags.DEFINE_integer('seed', 1, 'Random seed')
 flags.DEFINE_integer('max_degree', -1, 'Subsample the input. Maximum number of degree. For GraphSAGE.')
@@ -108,7 +109,7 @@ create_model = tf.make_template('model', model_func)
 train_model  = create_model(train_model, nbr_features=train_features, adj=train_adj, 
                                          preprocess=FLAGS.preprocess, is_training=True, cvd=FLAGS.cvd)
 test_model   = create_model(test_model,  nbr_features=test_features, adj=full_adj,
-                                         preprocess=FLAGS.test_preprocess, is_training=False, cvd=False)
+                                         preprocess=FLAGS.test_preprocess, is_training=False, cvd=FLAGS.test_cvd)
 
 print('Finised in {} seconds'.format(time()-t))
 
@@ -194,7 +195,8 @@ def SGDTrain():
             avg_acc .add(outs[2])
 
         # Validation 
-        cost, acc, micro, macro, duration = evaluate(val_d)
+        #cost, acc, micro, macro, duration = evaluate(val_d)
+        cost, acc, micro, macro, duration = 0, 0, 0, 0, 0
         cost_val.append(cost)
     
         # Print results

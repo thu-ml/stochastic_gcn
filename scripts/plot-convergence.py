@@ -5,201 +5,165 @@ import os, sys
 import numpy as np
 import seaborn as sns
 import pandas as pd
+from time import time
+from multiprocessing import Pool
 
 sns.set_style("whitegrid")
 
-#datasets   = ['cora', 'pubmed', 'nell', 'citeseer', 'ppi']
-#exps1 = [(20, False, True, True,  'k',  'Batch'),
-#         (1,  False, True, False, 'r:', '-CV, -PP'),
-#         (1,  False, True, True,  'r',  '-CV, +PP'),
-#         (1,  True,  True, False, 'b:', '+CV, -PP'),
-#         (1,  True,  True, True,  'b',  '+CV, +PP')]
-#exps2 = [(20, False, True,  True,  'k',  'Batch, +dropout'),
-#         (20, False, False, True,  'k:', 'Batch'),
-#         (1,  False, False, False, 'r:', '-CV, -PP'),
-#         (1,  False, False, True,  'r',  '-CV, +PP'),
-#         (1,  True,  False, False, 'b:', '+CV, -PP'),
-#         (1,  True,  False, True,  'b',  '+CV, +PP')]
-#all_exps = [exps1, exps2]
-#num_runs = 10
-#dir='logs_old'
+datasets   = [('citeseer', 10, (0, 200), (0, 4e4), (0, 8),   (0, 0), (0, 0), (0.64, 0.72)),
+              ('cora',     10, (0, 200), (0, 8e4), (0, 10),  (0, 0), (0, 0), (0.725, 0.80)),
+              ('pubmed',   10, (0, 200), (0, 4e4), (0, 20),  (0, 0), (0, 0), (0.725, 0.81)),
+              ('nell',     10, (0, 400), (0, 6e4), (0, 14),  (0, 0), (0, 0), (0.4, 0.7)),
+              ('ppi',      1,  (0, 800), (0, 1e7), (0, 150), (0, 0), (0, 0), (0, 0)),
+              ('reddit',   1,  (0, 50),  (0, 1e7), (0, 150), (0, 0), (0, 0), (0.92, 0.97))]
 
-datasets   = [('citeseer', 10), ('cora', 10), ('pubmed', 10), ('nell', 10), ('ppi', 1), ('reddit', 1)]
-#datasets   = ['reddit']
-#exps1 = [(20, 'False', 'True', True,  '#000000', 'Exact'),               # k
-#         #(20, False, 'Fast', True,  '#FF0000', 'Exact+Det'),           # r
-#         (1,  'False', 'True', False, '#777777', 'NS'),               # 0.5k
-#         (1,  'False', 'True', True,  '#0000FF',  'NS+PP'),            # b
-#         #(1,  False, 'Fast', True,  '#FF00FF',  'NS+PP+Det'),        # (r, b)
-#         (1,  'True',  'True', True,  '#00FF00',  'NS+PP+CV'),         # g
-#         #(1,  'True',  'Fast', True,  '#FFFF00',  'NS+PP+CV+Det'),     # (r, g)
-#         (1,  'TrueD', 'True', True,  '#FF0000',  'NS+PP+CVD')]   
-exps1 = [(20, 'False', 'False', True,  '#000000', 'Exact'),
+exps1 = [(20, 'False', 'True', True,  '#000000', 'Exact'),               # k
+         #(20, 'False', 'True', False,  '#000000', 'Exact'),               # k
+         #(20, False, 'Fast', True,  '#FF0000', 'Exact+Det'),           # r
+         (1,  'False', 'True', False, '#777777', 'NS'),               # 0.5k
+         (1,  'False', 'True', True,  '#0000FF',  'NS+PP'),            # b
+         #(1,  False, 'Fast', True,  '#FF00FF',  'NS+PP+Det'),        # (r, b)
+         (1,  'True',  'True', True,  '#00FF00',  'NS+PP+CV'),         # g
+         #(1,  'True',  'Fast', True,  '#FFFF00',  'NS+PP+CV+Det'),     # (r, g)
+         (1,  'TrueD', 'True', True,  '#FF0000',  'NS+PP+CVD')]   
+exps2 = [(20, 'False', 'False', True,  '#000000', 'Exact'),
          (1,  'False', 'False', False, '#777777', 'NS'),
          (1,  'False', 'False', True,  '#0000FF',  'NS+PP'),
          (1,  'True',  'False', True,  '#00FF00',  'NS+PP+CV')]
-all_exps = [exps1]
+all_exps = [exps1, exps2]
 dir='logs'
+fig_dir='figs'
 
-iafig, iaax = plt.subplots(2, 3, figsize=(16, 8))
-ilfig, ilax = plt.subplots(2, 3, figsize=(16, 8))
-dafig, daax = plt.subplots(2, 3, figsize=(16, 8))
-dlfig, dlax = plt.subplots(2, 3, figsize=(16, 8))
+
+def worker(x):
+    ndata, data, nexp, exps = x
+    data, num_runs, xiterlims, xdatalims, xtimelims, ytrainllims, yvalllims, yvalacclims = data
+    # Create figure data_exp_name.pdf
+    # name: (iter/data/time) * (training loss, validation loss, validation accuracy)
+    cnt = 0
+    handles  = []
+    losses   = []
+    accs     = []
+    train_losses = []
+    types    = []
+    iters    = []
+    amt_data = []
+    units    = []
+    legends  = []
+    times    = []
+    colors = {}
+    
+    cnt = 0
+    t = time()
+    for deg, cv, dropout, pp, style, text in exps:
+        if data == 'nell' and not pp:
+            continue
+        colors[cnt] = style
+        legends.append(text)
+        my_amt_data = []
+        my_time     = []
+        for run in range(num_runs):
+            log_file = '{}/{}_pp{}_dropout{}_deg{}_cv{}_run{}.log'.format(
+                        dir, data, pp, dropout, deg, cv, run)
+            N = 0
+            with open(log_file) as f:
+                current_time = 0
+                lines = f.readlines()
+                for line in lines:
+                    if line.find('Epoch') != -1:
+                        line = line.replace('=', ' ').split()
+                        losses.append(float(line[7]))
+                        accs.append(float(line[12]) if data=='ppi' else float(line[9]))
+                        train_losses.append(float(line[3]))
+                        N += 1
+                        current_time += float(line[17])-float(line[19])
+                        if N > len(my_amt_data):
+                            my_amt_data.append(float(line[-1]))
+                        if N > len(my_time):
+                            my_time.append(current_time)
+                        units.append(run)
+    
+            if data=='reddit':
+                print(text, my_time)
+            amt_data.extend(my_amt_data[:N])
+            times.extend(my_time[:N])
+            iters.extend(range(N))
+            types.extend([cnt]*N)
+    
+        cnt += 1
+    
+    df = pd.DataFrame(data={'loss': losses, 'acc': accs, 'type': types, 'iter': iters, 'data': amt_data, 'run': units, 'train_loss': train_losses, 'time': times})
+    print('Read tooks {} seconds'.format(time()-t))
+
+
+    def create_plot(x, xtitle, xlim, y, ytitle, ylim):
+        plot_name = '{}/{}_{}_{}_{}.pdf'.format(fig_dir, data, nexp, x, y)
+        print(plot_name)
+
+        fig, ax = plt.subplots()
+        sns.tsplot(data=df, time=x, unit="run", condition="type", value=y, ax=ax, legend=False, color=colors)
+        if not(xlim[0]==0 and xlim[1]==0):
+            ax.set_xlim(xlim)
+        if not(ylim[0]==0 and ylim[1]==0):
+            ax.set_ylim(ylim)
+
+        ax.set_xlabel(xtitle)
+        ax.set_ylabel(ytitle)
+
+        fig.savefig(plot_name)
+
+
+    for x, xtitle, xlim in [('iter', 'Number of iterations', xiterlims), ('data', 'Amount of data', xdatalims), ('time', 'Time', xtimelims)]:
+        for y, ytitle, ylim in [('train_loss', 'Training loss', ytrainllims), ('loss', 'Validation loss', yvalllims), ('acc', 'Validation accuracy' if data!='ppi' else 'Validation Micro-F1', yvalacclims)]:
+            create_plot(x, xtitle, xlim, y, ytitle, ylim)
+
+
+
+tasks = []
 for ndata, data in enumerate(datasets):
-    data, num_runs = data
     for nexp, exps in enumerate(all_exps):
-        fig, ax = plt.subplots(2, 3, figsize=(16, 8))
-        cnt = 0
-        handles  = []
-        losses   = []
-        accs     = []
-        train_losses = []
-        types    = []
-        iters    = []
-        amt_data = []
-        units    = []
-        legends  = []
-        colors = {}
-    
-        cnt = 0
-        for deg, cv, dropout, pp, style, text in exps:
-            if data == 'nell' and not pp:
-                continue
-            colors[cnt] = style
-            legends.append(text)
-            my_amt_data = []
-            for run in range(num_runs):
-                log_file = '{}/{}_pp{}_dropout{}_deg{}_cv{}_run{}.log'.format(
-                            dir, data, pp, dropout, deg, cv, run)
-                N = 0
-                with open(log_file) as f:
-                    lines = f.readlines()
-                    for line in lines:
-                        if line.find('Epoch') != -1:
-                            line = line.replace('=', ' ').split()
-                            losses.append(float(line[7]))
-                            accs.append(float(line[12]) if data=='ppi' else float(line[9]))
-                            train_losses.append(float(line[3]))
-                            N += 1
-                            if N > len(my_amt_data):
-                                my_amt_data.append(float(line[-1]))
-                            units.append(run)
-    
-                amt_data.extend(my_amt_data[:N])
-                iters.extend(range(N))
-                types.extend([cnt]*N)
-    
-            cnt += 1
-    
-        df = pd.DataFrame(data={'loss': losses, 'acc': accs, 'type': types, 'iter': iters, 'data': amt_data, 'run': units, 'train_loss': train_losses})
-    
-        # iter - trainloss
-        sns.tsplot(data=df, time="iter", unit="run", condition="type", value="train_loss", ax=ax[0,0], legend=False, color=colors)
-        # data - trainloss
-        sns.tsplot(data=df, time="data", unit="run", condition="type", value="train_loss", ax=ax[1,0], legend=False, color=colors)
-        # iter - loss
-        sns.tsplot(data=df, time="iter", unit="run", condition="type", value="loss", ax=ax[0,1], legend=False, color=colors)
-        # data - loss
-        sns.tsplot(data=df, time="data", unit="run", condition="type", value="loss", ax=ax[1,1], legend=False, color=colors)
-        # iter - acc
-        sns.tsplot(data=df, time="iter", unit="run", condition="type", value="acc", ax=ax[0,2], legend=False, color=colors)
-        # data - acc
-        sns.tsplot(data=df, time="data", unit="run", condition="type", value="acc", ax=ax[1,2], legend=False, color=colors)
+        tasks.append((ndata, data, nexp, exps))
 
-        ia_ax = iaax[ndata//3, ndata%3]
-        il_ax = ilax[ndata//3, ndata%3]
-        da_ax = daax[ndata//3, ndata%3]
-        dl_ax = dlax[ndata//3, ndata%3]
+p = Pool(48)
+p.map(worker, tasks)
 
-        sns.tsplot(data=df, time="iter", unit="run", condition="type", value="acc", ax=ia_ax, legend=False, color=colors)
-        ia_ax.legend(ia_ax.lines, legends)
-        sns.tsplot(data=df, time="iter", unit="run", condition="type", value="loss", ax=il_ax, legend=False, color=colors)
-        il_ax.legend(il_ax.lines, legends)
-        sns.tsplot(data=df, time="data", unit="run", condition="type", value="acc", ax=da_ax, legend=False, color=colors)
-        da_ax.legend(da_ax.lines, legends)
-        sns.tsplot(data=df, time="data", unit="run", condition="type", value="loss", ax=dl_ax, legend=False, color=colors)
-        dl_ax.legend(dl_ax.lines, legends)
+print('Merging files...')
+data_exps = []
+x_ys      = []
 
-        ia_ax.set_title(data)
-        il_ax.set_title(data)
-        da_ax.set_title(data)
-        dl_ax.set_title(data)
-    
-        ax[0,2].legend(ax[0,0].lines, legends)
-        #ax[0,2].axis('off')
-        #ax[1,2].axis('off')
-    
-    
-        ax[0,0].set_xlabel('Number of iterations')
-        ax[0,1].set_xlabel('Number of iterations')
-        il_ax.set_xlabel('Number of iterations')
-        ax[0,2].set_xlabel('Number of iterations')
-        ia_ax.set_xlabel('Number of iterations')
-        ax[1,0].set_xlabel('Amount of data seen')
-        ax[1,1].set_xlabel('Amount of data seen')
-        dl_ax.set_xlabel('Amount of data seen')
-        ax[0,0].set_ylabel('Training loss')
-        ax[0,1].set_ylabel('Validation loss')
-        il_ax.set_ylabel('Validation loss')
-        ax[0,2].set_ylabel('Validation accuracy')
-        ia_ax.set_ylabel('Validation accuracy')
-        ax[1,0].set_ylabel('Training loss')
-        ax[1,1].set_ylabel('Validation loss')
-        dl_ax.set_ylabel('Validation loss')
-        ax[1,2].set_ylabel('Validation accuracy')
-        da_ax.set_ylabel('Validation accuracy')
-        ylim = (0, 0)
-        if data=='cora':
-            ylim = (0.725, 0.80)
-        elif data=='pubmed':
-            ylim = (0.725, 0.81)
-        elif data=='citeseer':
-            ylim = (0.64, 0.72)
-        elif data=='nell':
-            ylim = (0.4, 0.7)
-        elif data=='ppi':
-            ylim = (0.7, 1.0)
-        elif data=='reddit':
-            ylim = (0.92, 0.97)
-        else:
-            ylim = (0.55, 0.7)
-        if data=='ppi' or data=='reddit':
-            xlim = (0, 1e7)
-        elif data=='pubmed':
-            xlim = (0, 4e4)
-        elif data=='nell':
-            xlim = (0, 6e4)
-        elif data=='citeseer':
-            xlim = (0, 4e4)
-        else:
-            xlim = (0, 8e4)
-        if data=='ppi':
-            xlim0 = (0, 800)
-        elif data=='reddit':
-            xlim0 = (0, 50)
-        else:
-            xlim0 = (0, 200)
-    
-        print(ylim, xlim, xlim0)
-        if ylim[0] != 0:
-            ax[0,2].set_ylim(ylim)
-            ia_ax.set_ylim(ylim)
-            ax[1,2].set_ylim(ylim)
-            da_ax.set_ylim(ylim)
-        ax[1,0].set_xlim(xlim)
-        ax[1,1].set_xlim(xlim)
-        dl_ax.set_xlim(xlim)
-        ax[1,2].set_xlim(xlim)
-        da_ax.set_xlim(xlim)
-        ax[0,0].set_xlim(xlim0)
-        ax[0,1].set_xlim(xlim0)
-        il_ax.set_xlim(xlim0)
-        ax[0,2].set_xlim(xlim0)
-        ia_ax.set_xlim(xlim0)
-        
-        fig.savefig('{}_{}.pdf'.format(data, nexp))
+for ndata, data in enumerate(datasets):
+    for nexp, exps in enumerate(all_exps):
+        data_exps.append((data[0], nexp))
 
-iafig.savefig('iter-acc.pdf') 
-ilfig.savefig('iter-loss.pdf') 
-dafig.savefig('data-acc.pdf')
-dlfig.savefig('data-loss.pdf')
+for x in ['iter', 'data', 'time']:
+    for y in ['train_loss', 'loss', 'acc']:
+        x_ys.append((x, y))
+
+
+def merge_pdf(x):
+    output, input, size = x
+    print(output)
+    command = "pdfjam --delta '0cm 0cm' --offset '0cm 0cm' --clip true --nup {} {} --outfile {}".format(size, ' '.join(input), output)
+    os.system(command)
+    os.system("pdfcrop {} {}".format(output, output))
+
+
+tasks = []
+for data, exp in data_exps:
+    merged_name = '{}_{}.pdf'.format(data, exp)
+    input_names = []
+    for x, y in x_ys:
+        input_names.append('{}/{}_{}_{}_{}.pdf'.format(fig_dir, data, exp, x, y))
+    tasks.append((merged_name, input_names, '3x3'))
+
+for exp in range(len(all_exps)):
+    for x, y in x_ys:
+        merged_name = '{}_{}_{}.pdf'.format(x, y, exp)
+        input_names = []
+        for data in datasets:
+            input_names.append('{}/{}_{}_{}_{}.pdf'.format(fig_dir, data[0], exp, x, y))
+        tasks.append((merged_name, input_names, '3x2'))
+
+p = Pool(48)
+p.map(merge_pdf, tasks)
+ 

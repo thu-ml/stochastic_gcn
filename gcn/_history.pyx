@@ -8,6 +8,7 @@ cdef extern from "history.h":
     cdef void compute_history(float *, int *, int *, int, int, float*, int, float*)
     cdef void c_slice(int, int*, float *, int *, int *, float *, int *, int *)
     cdef void c_indptr(int, int*, int*, int*)
+    cdef void c_dense_slice(int, int, int*, float*, float*)
 
 def mean_history(fadj, history):
     cdef float[:] ad = fadj.data
@@ -48,4 +49,15 @@ def slice(a, r):
                        &o_data[0], &o_indices[0,0], &o_indptr[0])
 
     return (indices, data, dense_shape)
+
+def dense_slice(a, r):
+    cdef int N = len(r)
+    cdef int C = a.shape[1]
+    output = np.zeros((N, C), dtype=np.float32)
+
+    cdef float[:,:] a_data = a
+    cdef float[:,:] o_data = output
+    cdef int[:]     rv     = r
+    c_dense_slice(N, C, &rv[0], &a_data[0,0], &o_data[0,0])
+    return output
 

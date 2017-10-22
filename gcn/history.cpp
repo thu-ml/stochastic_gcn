@@ -70,4 +70,8 @@ void c_slice(int N, int *r, float *a_d, int *a_i, int *a_p, float *o_d, int *o_i
     }
 }
 
-
+void c_dense_slice(int N, int C, int *r, float *i_data, float *o_data) {
+    for (int i = 0; i < N; i++) {
+        memcpy(o_data+i*C, i_data+r[i]*C, C*sizeof(float));
+    }
+}
