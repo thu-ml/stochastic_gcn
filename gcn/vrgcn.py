@@ -52,14 +52,20 @@ class VRGCN(GCN):
             fadj = feed_dict[self.placeholders['fadj'][l]][0]
 
             dim = self.agg0_dim if l==0 else FLAGS.hidden1
-            self.g_ops += fadj[0].shape[0] * dim * 2
-            self.g_ops += adj.shape[0] * dim * 2
+            g_ops = (fadj.shape[0] + adj.shape[0]) * dim * 4
+            if self.cvd:
+                g_ops *= 2
+            self.g_ops += g_ops
             self.adj_sizes[l] += adj.shape[0]
-            self.fadj_sizes[l] += fadj[0].shape[0]
+            self.fadj_sizes[l] += fadj.shape[0]
+            self.amt_data += adj.shape[0]
         for l in range(self.L+1):
             self.field_sizes[l] += feed_dict[self.placeholders['fields'][l]].size
         for c, l in self.layer_comp:
-            self.nn_ops += c * feed_dict[self.placeholders['fields'][l]].size * 4
+            nn_ops = c * feed_dict[self.placeholders['fields'][l]].size * 4
+            if self.cvd:
+                nn_ops *= 2
+            self.nn_ops += nn_ops
 
     def run_one_step(self, sess, feed_dict):
         t = time()

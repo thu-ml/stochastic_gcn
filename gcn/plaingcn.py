@@ -35,8 +35,9 @@ class PlainGCN(GCN):
         for l in range(self.L):
             dim = self.agg0_dim if l==0 else FLAGS.hidden1
             adj = feed_dict[self.placeholders['adj'][l]][0]
-            self.g_ops += adj.shape[0] * dim * 2
+            self.g_ops += adj.shape[0] * dim * 4
             self.adj_sizes[l] += adj.shape[0]
+            self.amt_data += adj.shape[0]
         for l in range(self.L+1):
             self.field_sizes[l] += feed_dict[self.placeholders['fields'][l]].size
 

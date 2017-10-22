@@ -161,8 +161,6 @@ avg_loss = Averager(1)
 avg_acc  = Averager(1)
 
 def SGDTrain():
-    amt_data = 0
-
     if FLAGS.load:
         train_model.load(sess, load_history=FLAGS.gradvar)
         test_model.load(sess)
@@ -187,7 +185,6 @@ def SGDTrain():
             if feed_dict==None:
                 break
             feed_dict[placeholders['dropout']] = FLAGS.dropout
-            amt_data += feed_dict[placeholders['fields'][0]].shape[0]
 
             # Training step
             outs = train_model.run_one_step(sess, feed_dict)
@@ -209,7 +206,7 @@ def SGDTrain():
               "time=", "{:.5f}".format(time() - t),
               "ttime=", "{:.5f}".format(duration),
               "(sch {:.5f} s)".format(tsch),
-              "data = {}".format(amt_data))
+              "data = {}".format(train_model.amt_data))
         G = float(2**30)
         print('TF time = {}, g time = {}, G GFLOPS = {}, NN GFLOPS = {}, field sizes = {}, adj sizes = {}, fadj sizes = {}'.format(
               train_model.run_t, train_model.g_t, train_model.g_ops/G, train_model.nn_ops/G, train_model.field_sizes, train_model.adj_sizes, train_model.fadj_sizes))
@@ -217,7 +214,7 @@ def SGDTrain():
         if epoch > FLAGS.early_stopping and cost_val[-1] > np.mean(cost_val[-(FLAGS.early_stopping+1):-1]):
             print("Early stopping...")
             break
-        if amt_data >= FLAGS.data and epoch > FLAGS.epochs:
+        if train_model.amt_data >= FLAGS.data and epoch > FLAGS.epochs:
             break
     
     print("Optimization Finished!")
