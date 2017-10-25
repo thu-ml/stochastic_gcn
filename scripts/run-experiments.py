@@ -1,13 +1,13 @@
 import os, sys
 
-datasets_runs    = [('citeseer', 10), ('cora', 10), ('pubmed', 10), ('nell', 10), ('ppi', 1), ('reddit', 1)]
+datasets_runs    = [('reddit', 5)] #[('citeseer', 10), ('cora', 10), ('pubmed', 10), ('nell', 10), ('ppi', 1), ('reddit', 1)]
 gcn_datasets = set(['cora', 'citeseer', 'pubmed', 'nell'])
 preprocess  = ['True', 'False']
 dropout = [True, False]
-deg_cv_dropout_preprocess   = [#(20, False, 'True', True), (20, False, 'True', False), 
-                               #(1, False, 'True', False), 
-                               #(1, False, 'True', True), (1, False, 'Fast', True), 
-                               #(1, True, 'True', True), (1, True, 'Fast', True),
+deg_cv_dropout_preprocess   = [(20, 'False', 'True', True), (20, 'False', 'True', False), 
+                               (1, 'False', 'True', False), 
+                               (1, 'False', 'True', True), #(1, False, 'Fast', True), 
+                               (1, 'True', 'True', True), (1, 'TrueD', 'True', True),  #(1, True, 'Fast', True),
                                (20, 'False', 'False', True), (1, 'False', 'False', False), (1, 'False', 'False', True), (1, 'True', 'False', True)]
 test_exps = [('Exact', '--test_degree 10000'),
         ('NS',    '--test_degree 1 --nopreprocess --notest_preprocess'),
@@ -46,8 +46,11 @@ for data, n_runs in datasets_runs:
                 ndata  = int(1e7)
                 epochs = 800
             else:
-                ndata  = int(4e7)
-                epochs = 30
+                ndata  = int(0)
+                if pp==False and deg==1 and cv=='False':
+                    epochs = 100
+                else:
+                    epochs = 50
 
             if cv=='False':
                 cv_str = '--cv=False'

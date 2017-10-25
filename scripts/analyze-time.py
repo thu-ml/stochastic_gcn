@@ -11,7 +11,7 @@ exps = [(20, 'False', 'True', False, 'Exact'),
 dir      = 'logs'
 dataset  = 'reddit'
 accuracy = 0.96
-num_runs = 1
+num_runs = 5
 
 for deg, cv, dropout, pp, text in exps:
     accs   = []

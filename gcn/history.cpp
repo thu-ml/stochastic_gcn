@@ -3,8 +3,9 @@
 #include <chrono>
 #include <iostream>
 #include <memory.h>
-#include <mkl.h>
+//#include <mkl.h>
 using namespace std;
+using namespace std::chrono;
 
 //void compute_history(float *adj_w, int *adj_i, int *adjp, int num_data, int num_edges,
 //                     int *f, int fsize,
@@ -35,16 +36,16 @@ using namespace std;
 //    cout << float(flops) / 1024 / 1024 / t << ' ' << flops << ' ' << t << endl;
 //}
 
-void compute_history(float *adj_w, int *adj_i, int *adjp, int num_data, int num_edges,
-                     float *history, int dims, float *output) {
-    vector<int> ptrb(adjp, adjp+num_data);
-    vector<int> ptre(adjp+1, adjp+num_data); ptre.push_back(num_edges);
-    float alpha = 1;
-    float beta = 0;
-    mkl_scsrmm("N", &num_data, &dims, &num_data, 
-               &alpha, "G00C00", adj_w, adj_i, ptrb.data(), ptre.data(), 
-               history, &dims, &beta, output, &dims);
-}
+//void compute_history(float *adj_w, int *adj_i, int *adjp, int num_data, int num_edges,
+//                     float *history, int dims, float *output) {
+//    vector<int> ptrb(adjp, adjp+num_data);
+//    vector<int> ptre(adjp+1, adjp+num_data); ptre.push_back(num_edges);
+//    float alpha = 1;
+//    float beta = 0;
+//    mkl_scsrmm("N", &num_data, &dims, &num_data, 
+//               &alpha, "G00C00", adj_w, adj_i, ptrb.data(), ptre.data(), 
+//               history, &dims, &beta, output, &dims);
+//}
 
 void c_indptr(int N, int *r, int *a_i, int *o_i) {
     int nnz = 0;
@@ -71,7 +72,17 @@ void c_slice(int N, int *r, float *a_d, int *a_i, int *a_p, float *o_d, int *o_i
 }
 
 void c_dense_slice(int N, int C, int *r, float *i_data, float *o_data) {
+    auto start_t = high_resolution_clock::now();
+    int  flops   = N * C * sizeof(float);
+//#pragma omp parallel for
     for (int i = 0; i < N; i++) {
-        memcpy(o_data+i*C, i_data+r[i]*C, C*sizeof(float));
+        auto *id = i_data + r[i] * C;
+        auto *od = o_data + i * C;
+        for (int c = 0; c < C; c++)
+            od[c] = id[c];
+        //memcpy(o_data+i*C, i_data+r[i]*C, C*sizeof(float));
     }
+    //auto end_t   = high_resolution_clock::now();
+    //auto t       = duration<double>(end_t-start_t).count();
+    //cout << "Finished in " << t << " seconds, " << flops/t/1024/1024 << " MB/s " << N << " " << C << endl;
 }

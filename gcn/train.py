@@ -192,8 +192,8 @@ def SGDTrain():
             avg_acc .add(outs[2])
 
         # Validation 
-        #cost, acc, micro, macro, duration = evaluate(val_d)
-        cost, acc, micro, macro, duration = 0, 0, 0, 0, 0
+        cost, acc, micro, macro, duration = evaluate(val_d)
+        #cost, acc, micro, macro, duration = 0, 0, 0, 0, 0
         cost_val.append(cost)
     
         # Print results

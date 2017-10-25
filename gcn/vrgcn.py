@@ -43,6 +43,7 @@ class VRGCN(GCN):
             input = slice(input, f0)
         else:
             input = dense_slice(input, f0)
+            #input = input[f0,:]
         feed_dict[self.inputs_ph] = input
 
         # Read history

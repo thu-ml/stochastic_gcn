@@ -5,22 +5,22 @@ from scipy.sparse import coo_matrix, csr_matrix
 from time import time
 
 cdef extern from "history.h":
-    cdef void compute_history(float *, int *, int *, int, int, float*, int, float*)
+#    cdef void compute_history(float *, int *, int *, int, int, float*, int, float*)
     cdef void c_slice(int, int*, float *, int *, int *, float *, int *, int *)
     cdef void c_indptr(int, int*, int*, int*)
     cdef void c_dense_slice(int, int, int*, float*, float*)
 
-def mean_history(fadj, history):
-    cdef float[:] ad = fadj.data
-    cdef int[:]   ai = fadj.indices
-    cdef int[:]   ap = fadj.indptr
-    cdef float[:,:] hd = history
-    output = np.zeros((fadj.shape[0], history.shape[1]), dtype=np.float32)
-    cdef float[:,:] od = output
-
-    compute_history(&ad[0], &ai[0], &ap[0], fadj.shape[0], fadj.nnz, 
-                    &hd[0,0], history.shape[1], &od[0,0])
-    return output
+#def mean_history(fadj, history):
+#    cdef float[:] ad = fadj.data
+#    cdef int[:]   ai = fadj.indices
+#    cdef int[:]   ap = fadj.indptr
+#    cdef float[:,:] hd = history
+#    output = np.zeros((fadj.shape[0], history.shape[1]), dtype=np.float32)
+#    cdef float[:,:] od = output
+#
+#    compute_history(&ad[0], &ai[0], &ap[0], fadj.shape[0], fadj.nnz, 
+#                    &hd[0,0], history.shape[1], &od[0,0])
+#    return output
 
 def slice(a, r):    
     cdef int N = len(r)

@@ -15,7 +15,7 @@ datasets   = [('citeseer', 10, (0, 200), (0, 4e4), (0, 8),   (0, 0), (0, 0), (0.
               ('pubmed',   10, (0, 200), (0, 4e4), (0, 20),  (0, 0), (0, 0), (0.725, 0.81)),
               ('nell',     10, (0, 400), (0, 6e4), (0, 14),  (0, 0), (0, 0), (0.4, 0.7)),
               ('ppi',      1,  (0, 800), (0, 1e7), (0, 150), (0, 0), (0, 0), (0, 0)),
-              ('reddit',   1,  (0, 50),  (0, 1e7), (0, 150), (0, 0), (0, 0), (0.92, 0.97))]
+              ('reddit',   5,  (0, 50),  (0, 1e7), (0, 150), (0, 0), (0, 0), (0.92, 0.97))]
 
 exps1 = [(20, 'False', 'True', True,  '#000000', 'Exact'),               # k
          #(20, 'False', 'True', False,  '#000000', 'Exact'),               # k
@@ -23,13 +23,13 @@ exps1 = [(20, 'False', 'True', True,  '#000000', 'Exact'),               # k
          (1,  'False', 'True', False, '#777777', 'NS'),               # 0.5k
          (1,  'False', 'True', True,  '#0000FF',  'NS+PP'),            # b
          #(1,  False, 'Fast', True,  '#FF00FF',  'NS+PP+Det'),        # (r, b)
-         (1,  'True',  'True', True,  '#00FF00',  'NS+PP+CV'),         # g
+         (1,  'True',  'True', True,  '#00FF00',  'CV+PP'),         # g
          #(1,  'True',  'Fast', True,  '#FFFF00',  'NS+PP+CV+Det'),     # (r, g)
-         (1,  'TrueD', 'True', True,  '#FF0000',  'NS+PP+CVD')]   
+         (1,  'TrueD', 'True', True,  '#FF0000',  'CVD+PP')]   
 exps2 = [(20, 'False', 'False', True,  '#000000', 'Exact'),
          (1,  'False', 'False', False, '#777777', 'NS'),
          (1,  'False', 'False', True,  '#0000FF',  'NS+PP'),
-         (1,  'True',  'False', True,  '#00FF00',  'NS+PP+CV')]
+         (1,  'True',  'False', True,  '#00FF00',  'CV+PP')]
 all_exps = [exps1, exps2]
 dir='logs'
 fig_dir='figs'
@@ -65,9 +65,11 @@ def worker(x):
         for run in range(num_runs):
             log_file = '{}/{}_pp{}_dropout{}_deg{}_cv{}_run{}.log'.format(
                         dir, data, pp, dropout, deg, cv, run)
+            print(log_file)
             N = 0
             with open(log_file) as f:
                 current_time = 0
+                current_data = 0
                 lines = f.readlines()
                 for line in lines:
                     if line.find('Epoch') != -1:
@@ -77,14 +79,18 @@ def worker(x):
                         train_losses.append(float(line[3]))
                         N += 1
                         current_time += float(line[17])-float(line[19])
+                        if data=='reddit':
+                            current_data += float(line[-1])
+                        else:
+                            current_data = float(line[-1])
                         if N > len(my_amt_data):
-                            my_amt_data.append(float(line[-1]))
+                            my_amt_data.append(current_data)
                         if N > len(my_time):
                             my_time.append(current_time)
                         units.append(run)
     
-            if data=='reddit':
-                print(text, my_time)
+            #if data=='reddit':
+            #    print(text, my_time)
             amt_data.extend(my_amt_data[:N])
             times.extend(my_time[:N])
             iters.extend(range(N))
@@ -94,11 +100,10 @@ def worker(x):
     
     df = pd.DataFrame(data={'loss': losses, 'acc': accs, 'type': types, 'iter': iters, 'data': amt_data, 'run': units, 'train_loss': train_losses, 'time': times})
     print('Read tooks {} seconds'.format(time()-t))
+    #print(df)
 
-
-    def create_plot(x, xtitle, xlim, y, ytitle, ylim):
+    def create_plot(x, xtitle, xlim, y, ytitle, ylim, legend=False, ltext=None):
         plot_name = '{}/{}_{}_{}_{}.pdf'.format(fig_dir, data, nexp, x, y)
-        print(plot_name)
 
         fig, ax = plt.subplots()
         sns.tsplot(data=df, time=x, unit="run", condition="type", value=y, ax=ax, legend=False, color=colors)
@@ -109,13 +114,26 @@ def worker(x):
 
         ax.set_xlabel(xtitle)
         ax.set_ylabel(ytitle)
+        ax.set_title(data)
 
         fig.savefig(plot_name)
+        os.system('pdfcrop {} {}'.format(plot_name, plot_name))
+        print(plot_name)
+
+        if legend:
+            lines = ax.get_lines()
+            fig, ax = plt.subplots()
+            fig.legend(lines, ltext, ncol=5)
+            ax.axis('off')
+            fig.savefig('legend_{}.pdf'.format(nexp))
 
 
-    for x, xtitle, xlim in [('iter', 'Number of iterations', xiterlims), ('data', 'Amount of data', xdatalims), ('time', 'Time', xtimelims)]:
+    for x, xtitle, xlim in [('iter', 'Number of epochs', xiterlims), ('data', 'Amount of data', xdatalims), ('time', 'Time', xtimelims)]:
         for y, ytitle, ylim in [('train_loss', 'Training loss', ytrainllims), ('loss', 'Validation loss', yvalllims), ('acc', 'Validation accuracy' if data!='ppi' else 'Validation Micro-F1', yvalacclims)]:
-            create_plot(x, xtitle, xlim, y, ytitle, ylim)
+            if data=='reddit' and x=='time' and y=='acc':
+                create_plot(x, xtitle, xlim, y, ytitle, ylim, True, [e[-1] for e in exps])
+            else:
+                create_plot(x, xtitle, xlim, y, ytitle, ylim)
 
 
 
@@ -167,3 +185,6 @@ for exp in range(len(all_exps)):
 p = Pool(48)
 p.map(merge_pdf, tasks)
  
+for i in range(len(all_exps)):
+    f = 'legend_{}.pdf'.format(i)
+    os.system('pdfcrop {} {}'.format(f, f))
