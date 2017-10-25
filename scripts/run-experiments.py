@@ -1,10 +1,11 @@
 import os, sys
 
-datasets_runs    = [('reddit', 5)] #[('citeseer', 10), ('cora', 10), ('pubmed', 10), ('nell', 10), ('ppi', 1), ('reddit', 1)]
+datasets_runs    = [('citeseer', 10), ('cora', 10), ('pubmed', 10), ('nell', 10), ('ppi', 5), ('reddit', 5)]
 gcn_datasets = set(['cora', 'citeseer', 'pubmed', 'nell'])
 preprocess  = ['True', 'False']
 dropout = [True, False]
-deg_cv_dropout_preprocess   = [(20, 'False', 'True', True), (20, 'False', 'True', False), 
+deg_cv_dropout_preprocess   = [(20, 'False', 'True', True), 
+                               #(20, 'False', 'True', False), 
                                (1, 'False', 'True', False), 
                                (1, 'False', 'True', True), #(1, False, 'Fast', True), 
                                (1, 'True', 'True', True), (1, 'TrueD', 'True', True),  #(1, True, 'Fast', True),
