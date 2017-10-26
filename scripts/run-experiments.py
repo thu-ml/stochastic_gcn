@@ -41,10 +41,10 @@ for data, n_runs in datasets_runs:
                 dropout_str = '--dropout 0'
             log_file = 'logs/{}_pp{}_dropout{}_deg{}_cv{}_run{}.log'.format(data, pp, d, deg, cv, run)
             if data in set(['cora', 'citeseer', 'pubmed', 'nell']):
-                ndata  = 50000
+                ndata  = 0
                 epochs = 400
             elif data == 'ppi':
-                ndata  = int(1e7)
+                ndata  = 0
                 epochs = 800
             else:
                 ndata  = int(0)

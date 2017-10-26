@@ -11,8 +11,9 @@ sns.set_style("whitegrid")
 datasets   = ['cora', 'pubmed', 'nell', 'citeseer', 'ppi', 'reddit']
 exps = [('NS',    'NS'),
         ('NSPP',  'NS+PP'),
-        ('NSCV',  'NS+CV'),
+        ('NSCV',  'CV'),
         ('Exact', 'Exact')]
+colors = ['#777777', '#0000FF', '#00FF00', '#000000']
 dir = 'logs'
 
 accs  = []
@@ -34,5 +35,6 @@ for d in datasets:
 
 df = pd.DataFrame(data={'Testing accuracy': accs, 'Algorithm': algos, 'Dataset': data})
 print(df)
-g = sns.factorplot(x='Dataset', y='Testing accuracy', hue='Algorithm', data=df, kind='bar', aspect=2, size=2)
+g = sns.factorplot(x='Dataset', y='Testing accuracy', hue='Algorithm', data=df, kind='bar', aspect=2, size=2, palette=colors)
 g.savefig('test.pdf')
+os.system('pdfcrop test.pdf test.pdf')

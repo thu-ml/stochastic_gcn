@@ -9,8 +9,10 @@ import pandas as pd
 sns.set_style("whitegrid")
 
 datasets   = ['cora', 'pubmed', 'nell', 'citeseer', 'ppi', 'reddit']
-exps = [('VarNS', 'NS'), ('VarNSPP', 'NS+PP'), ('VarCV', 'NS+PP+CV'), 
-        ('DVarNS', 'NS'), ('DVarNSPP', 'NS+PP'), ('DVarCV', 'NS+PP+CV'), ('DVarCVD', 'NS+PP+CVD')]
+exps = [('VarNS', 'NS'), ('VarNSPP', 'NS+PP'), ('VarCV', 'CV+PP'), 
+        ('DVarNS', 'NS'), ('DVarNSPP', 'NS+PP'), ('DVarCV', 'CV+PP'), ('DVarCVD', 'CVD+PP')]
+p1 = ['#777777', '#0000FF', '#00FF00', '#000000']
+p2 = ['#777777', '#0000FF', '#00FF00', '#FF0000', '#000000']
 dir = 'logs'
 
 has_dropout = []
@@ -52,11 +54,19 @@ print(df)
 ddropout = df[df['has_dropout'] == True]
 ndropout = df[df['has_dropout'] == False]
 
-g = sns.factorplot(x='Dataset', y='Gradient Bias', hue='Algorithm', data=ndropout, kind='bar', aspect=2, size=2)
+g = sns.factorplot(x='Dataset', y='Gradient Bias', hue='Algorithm', data=ndropout, kind='bar', aspect=2, size=2, palette=p1)
+plt.title('Bias (without dropout)')
 g.savefig('var-nb.pdf')
-g = sns.factorplot(x='Dataset', y='Gradient Std. Dev.', hue='Algorithm', data=ndropout, kind='bar', aspect=2, size=2)
+os.system('pdfcrop var-nb.pdf var-nb.pdf')
+g = sns.factorplot(x='Dataset', y='Gradient Std. Dev.', hue='Algorithm', data=ndropout, kind='bar', aspect=2, size=2, palette=p1)
+plt.title('Standard deviation (without dropout)')
 g.savefig('var-ns.pdf')
-g = sns.factorplot(x='Dataset', y='Gradient Bias', hue='Algorithm', data=ddropout, kind='bar', aspect=2, size=2)
+os.system('pdfcrop var-ns.pdf var-ns.pdf')
+g = sns.factorplot(x='Dataset', y='Gradient Bias', hue='Algorithm', data=ddropout, kind='bar', aspect=2, size=2, palette=p2)
+plt.title('Bias (with dropout)')
 g.savefig('var-db.pdf')
-g = sns.factorplot(x='Dataset', y='Gradient Std. Dev.', hue='Algorithm', data=ddropout, kind='bar', aspect=2, size=2)
+os.system('pdfcrop var-db.pdf var-db.pdf')
+g = sns.factorplot(x='Dataset', y='Gradient Std. Dev.', hue='Algorithm', data=ddropout, kind='bar', aspect=2, size=2, palette=p2)
+plt.title('Standard deviation (with dropout)')
 g.savefig('var-ds.pdf')
+os.system('pdfcrop var-ds.pdf var-ds.pdf')

@@ -8,14 +8,20 @@ import pandas as pd
 from time import time
 from multiprocessing import Pool
 
+from matplotlib import rcParams
+rcParams.update({'figure.autolayout': True})
+
+
 sns.set_style("whitegrid")
 
-datasets   = [('citeseer', 10, (0, 200), (0, 4e4), (0, 8),   (0, 0), (0, 0), (0.64, 0.72)),
-              ('cora',     10, (0, 200), (0, 8e4), (0, 10),  (0, 0), (0, 0), (0.725, 0.80)),
-              ('pubmed',   10, (0, 200), (0, 4e4), (0, 20),  (0, 0), (0, 0), (0.725, 0.81)),
-              ('nell',     10, (0, 400), (0, 6e4), (0, 14),  (0, 0), (0, 0), (0.4, 0.7)),
-              ('ppi',      1,  (0, 800), (0, 1e7), (0, 150), (0, 0), (0, 0), (0, 0)),
-              ('reddit',   5,  (0, 50),  (0, 1e7), (0, 150), (0, 0), (0, 0), (0.92, 0.97))]
+datasets   = [('citeseer', 10, (0, 200), (0, 4e4), (0, 8),   (0.4, 1.0), (0, 0), (0.69, 0.72)),
+              ('cora',     10, (0, 200), (0, 8e4), (0, 10),  (0.2, 1.0), (0, 0), (0.77, 0.80)),
+              ('pubmed',   10, (0, 200), (0, 4e4), (0, 20),  (0.15, 0.8), (0, 0), (0.77, 0.81)),
+              ('nell',     10, (0, 400), (0, 6e4), (0, 14),  (0.3, 1.5), (0, 0), (0.6, 0.68)),
+              ('reddit',   5,  (0, 50),  (0, 1e7), (0, 150), (0, 0.4), (0, 0), (0.95, 0.968)),
+              ('ppi',      5,  (0, 800), (0, 1e7), (0, 150), (0, 0.5), (0, 0), (0.92, 0.98))]
+              #('reddit',   5,  (0, 50),  (0, 1e7), (0, 150), (0, 0), (0, 0), (0.95, 0.97)),
+              #('ppi',      5,  (0, 800), (0, 1e7), (0, 150), (0, 0), (0, 0), (0.9, 1.0))]
 
 exps1 = [(20, 'False', 'True', True,  '#000000', 'Exact'),               # k
          #(20, 'False', 'True', False,  '#000000', 'Exact'),               # k
@@ -79,10 +85,7 @@ def worker(x):
                         train_losses.append(float(line[3]))
                         N += 1
                         current_time += float(line[17])-float(line[19])
-                        if data=='reddit':
-                            current_data += float(line[-1])
-                        else:
-                            current_data = float(line[-1])
+                        current_data += float(line[-1])
                         if N > len(my_amt_data):
                             my_amt_data.append(current_data)
                         if N > len(my_time):
@@ -105,8 +108,8 @@ def worker(x):
     def create_plot(x, xtitle, xlim, y, ytitle, ylim, legend=False, ltext=None):
         plot_name = '{}/{}_{}_{}_{}.pdf'.format(fig_dir, data, nexp, x, y)
 
-        fig, ax = plt.subplots()
-        sns.tsplot(data=df, time=x, unit="run", condition="type", value=y, ax=ax, legend=False, color=colors)
+        fig, ax = plt.subplots(figsize=(3.5, 2))
+        sns.tsplot(data=df, time=x, unit="run", condition="type", value=y, ax=ax, legend=False, color=colors, linewidth=1.0)
         if not(xlim[0]==0 and xlim[1]==0):
             ax.set_xlim(xlim)
         if not(ylim[0]==0 and ylim[1]==0):
@@ -114,6 +117,8 @@ def worker(x):
 
         ax.set_xlabel(xtitle)
         ax.set_ylabel(ytitle)
+        ax.xaxis.label.set_visible(False)
+        ax.yaxis.label.set_visible(False)
         ax.set_title(data)
 
         fig.savefig(plot_name)
@@ -123,7 +128,8 @@ def worker(x):
         if legend:
             lines = ax.get_lines()
             fig, ax = plt.subplots()
-            fig.legend(lines, ltext, ncol=5)
+            #fig.legend(lines, ltext, ncol=5)
+            fig.legend(lines, ltext)
             ax.axis('off')
             fig.savefig('legend_{}.pdf'.format(nexp))
 
