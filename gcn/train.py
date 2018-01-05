@@ -59,6 +59,7 @@ flags.DEFINE_integer('seed', 1, 'Random seed')
 flags.DEFINE_integer('max_degree', -1, 'Subsample the input. Maximum number of degree. For GraphSAGE.')
 
 flags.DEFINE_bool('gradvar', False, 'Output gradient variance')
+flags.DEFINE_bool('reverse', False, 'Original models')
 
 tf.set_random_seed(FLAGS.seed)
 np.random.seed(FLAGS.seed)

@@ -426,12 +426,12 @@ def data_augmentation(num_data, train_adj, full_adj, feats, labels, train_data, 
     return num_data*(n_rep+1), adj, feats, adj.dot(feats), labels, train_data, val_data, test_data
 
 
-def dropout(feats, keep_prob):
+def np_dropout(feats, keep_prob):
     mask = np.random.rand(feats.shape[0], feats.shape[1]) < keep_prob
     return feats * mask.astype(np.float32) * (1.0 / keep_prob)
 
 
-def sparse_dropout(feats, keep_prob):
+def np_sparse_dropout(feats, keep_prob):
     feats = feats.tocoo()
     mask  = np.random.rand(feats.data.shape[0]) < keep_prob
     feats = sp.csr_matrix((feats.data[mask], (feats.row[mask], feats.col[mask])),

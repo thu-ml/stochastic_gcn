@@ -3,7 +3,7 @@ from gcn.metrics import *
 from gcn.inits import *
 from time import time
 import scipy.sparse as sp
-from gcn.utils import sparse_to_tuple, dropout
+from gcn.utils import sparse_to_tuple, np_dropout, np_sparse_dropout
 from gcn.models import GCN
 import numpy as np
 from history import slice, dense_slice

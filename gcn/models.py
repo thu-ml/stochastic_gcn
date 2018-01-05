@@ -3,7 +3,7 @@ from gcn.metrics import *
 from gcn.inits import *
 from time import time
 import scipy.sparse as sp
-from gcn.utils import sparse_to_tuple, dropout, sparse_dropout
+from gcn.utils import sparse_to_tuple, np_dropout, np_sparse_dropout
 import numpy as np
 
 flags = tf.app.flags
@@ -319,13 +319,16 @@ class GCN(Model):
                                              logging=self.logging,
                                              name='dense%d'%cnt, norm=layer_norm))
                 else:
-                    self.layers.append(Dropout(1-self.placeholders['dropout'], self.cvd))
+                    if not FLAGS.reverse:
+                        self.layers.append(Dropout(1-self.placeholders['dropout'], self.cvd))
                     self.layers.append(Dense(input_dim=input_dim,
                                              output_dim=output_dim,
                                              placeholders=self.placeholders,
                                              act=act,
                                              logging=self.logging,
                                              name='dense%d'%cnt, norm=layer_norm))
+                    if FLAGS.reverse and not last_layer:
+                        self.layers.append(Dropout(1-self.placeholders['dropout'], self.cvd))
                 self.layer_comp.append((input_dim*output_dim, l+1))
                 cnt += 1
 

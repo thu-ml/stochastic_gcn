@@ -3,7 +3,7 @@ from gcn.metrics import *
 from gcn.inits import *
 from time import time
 import scipy.sparse as sp
-from gcn.utils import sparse_to_tuple, dropout
+from gcn.utils import sparse_to_tuple, tuple_to_coo, np_dropout, np_sparse_dropout
 from gcn.models import GCN
 import numpy as np
 from history import slice, dense_slice
@@ -26,10 +26,15 @@ class PlainGCN(GCN):
     def get_data(self, feed_dict):
         input = self.features 
         f0    = feed_dict[self.placeholders['fields'][0]]
+        dropout = feed_dict.get(self.placeholders['dropout'], 0.0)
         if self.sparse_input:
             input = slice(input, f0)
+            if FLAGS.reverse:
+                input = sparse_to_tuple(np_sparse_dropout(tuple_to_coo(input), 1-dropout))
         else:
             input = dense_slice(input, f0)
+            if FLAGS.reverse:
+                input = np_dropout(input, 1-dropout)
             #input = input[f0,:]
         feed_dict[self.inputs_ph] = input
         
