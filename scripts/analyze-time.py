@@ -1,7 +1,8 @@
 import os, sys
 import numpy as np
 
-exps = [(20, 'False', 'True', False, 'Exact'),
+exps = [#(20, 'False', 'True', False, 'Exact'),
+        (20, 'False', 'True', False, 'Exact'),
         (1,  'False', 'True', False, 'NS'),
         (1,  'False', 'True', True,  'NS+PP'),
         (1,  'True',  'True', True,  'NS+PP+CV'),
@@ -9,9 +10,9 @@ exps = [(20, 'False', 'True', False, 'Exact'),
 
 # Epochs, time, amt. of data, sparse gflop, dense gflop
 dir      = 'logs'
-dataset  = 'reddit'
-accuracy = 0.96
-num_runs = 5
+dataset  = 'reddit3'
+accuracy = 0.94
+num_runs = 1#5
 
 for deg, cv, dropout, pp, text in exps:
     accs   = []

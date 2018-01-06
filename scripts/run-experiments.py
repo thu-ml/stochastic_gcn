@@ -1,6 +1,6 @@
 import os, sys
 
-datasets_runs    = [('citeseer', 10), ('cora', 10), ('pubmed', 10), ('nell', 10), ('ppi', 5), ('reddit', 5)]
+datasets_runs    = [('reddit3', 1)] #[('citeseer', 10), ('cora', 10), ('pubmed', 10), ('nell', 10), ('ppi', 5), ('reddit', 5)]
 gcn_datasets = set(['cora', 'citeseer', 'pubmed', 'nell'])
 preprocess  = ['True', 'False']
 dropout = [True, False]
