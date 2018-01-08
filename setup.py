@@ -11,7 +11,7 @@ setup(name='gcn',
       license='MIT',
       install_requires=['numpy',
                         'tensorflow-gpu',
-                        'networkx',
+                        'networkx==1.11',
                         'scipy'
                         ],
       package_data={'gcn': ['README.md']},

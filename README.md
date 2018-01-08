@@ -1,65 +1,64 @@
-# Graph Convolutional Networks
+# Stochastic Training for Graph Convolutional Networks
 
-This is a TensorFlow implementation of Graph Convolutional Networks for the task of (semi-supervised) classification of nodes in a graph, as described in our paper:
- 
-Thomas N. Kipf, Max Welling, [Semi-Supervised Classification with Graph Convolutional Networks](http://arxiv.org/abs/1609.02907) (ICLR 2017)
-
-For a high-level explanation, have a look at our blog post:
-
-Thomas Kipf, [Graph Convolutional Networks](http://tkipf.github.io/graph-convolutional-networks/) (2016)
+Code for the paper [Stochastic Training for Graph Convolutional Networks](https://arxiv.org/abs/1710.10568). The implementation is based on Thomas Kipf's [implementation](https://github.com/tkipf/gcn).
 
 ## Installation
+Make sure that you have valid c++11 and cuda compiler.
 
 ```bash
 python setup.py install
+cd gcn
+./build.sh
 ```
 
 ## Requirements
 * tensorflow (>0.12)
-* networkx
-
-## Run the demo
-
-```bash
-python train.py
-```
+* networkx (<=1.11 for loading GraphSAGE datasets)
 
 ## Data
 
-In order to use your own data, you have to provide 
-* an N by N adjacency matrix (N is the number of nodes), 
-* an N by D feature matrix (D is the number of features per node), and
-* an N by E binary label matrix (E is the number of classes).
+We support both [GCN](https://github.com/tkipf/gcn)'s data format and [GraphSAGE](https://github.com/williamleif/GraphSAGE)'s data format.
 
-Have a look at the `load_data()` function in `utils.py` for an example.
+To download the Citeseer, Cora, PubMed, PPI and Reddit dataset
 
-In this example, we load citation network data (Cora, Citeseer or Pubmed). The original datasets can be found here: http://linqs.cs.umd.edu/projects/projects/lbc/. In our version (see `data` folder) we use dataset splits provided by https://github.com/kimiyoung/planetoid (Zhilin Yang, William W. Cohen, Ruslan Salakhutdinov, [Revisiting Semi-Supervised Learning with Graph Embeddings](https://arxiv.org/abs/1603.08861), ICML 2016). 
+    mkdir data
+    cd data
+    git clone git@github.com:tkipf/gcn.git
+    mv gcn/gcn/data/* .
 
-You can specify a dataset as follows:
+    wget http://snap.stanford.edu/graphsage/ppi.zip
+    unzip ppi.zip
+    mv ppi/* .
+
+    wget http://snap.stanford.edu/graphsage/reddit.zip
+    unzip reddit.zip
+    mv reddit/* .
+
+
+## Run the demo
+
+We provide recipes for the Citeseer, Cora, PubMed, NELL, PPI, and Reddit dataset in the `config` folder. Please refer to our paper for the algorithms (CVD+PP typically works the best).
 
 ```bash
-python train.py --dataset citeseer
+# Exact algorithm
+config/cora.config
+# NS+PP algorithm
+config/cora.config --degree=1 --test_Degree=1
+# CV+PP algorithm
+config/cora.config --cv --test_cv --degree=1 --test_degree=1 
+# CVD+PP algorithm
+config/cora.config --cv --cvd --test_cv --degree=1 --test_degree=1
 ```
-
-(or by editing `train.py`)
-
-## Models
-
-You can choose between the following models: 
-* `gcn`: Graph convolutional network (Thomas N. Kipf, Max Welling, [Semi-Supervised Classification with Graph Convolutional Networks](http://arxiv.org/abs/1609.02907), 2016)
-* `gcn_cheby`: Chebyshev polynomial version of graph convolutional network as described in (Michaël Defferrard, Xavier Bresson, Pierre Vandergheynst, [Convolutional Neural Networks on Graphs with Fast Localized Spectral Filtering](https://arxiv.org/abs/1606.09375), NIPS 2016)
-* `dense`: Basic multi-layer perceptron that supports sparse inputs
-
 
 ## Cite
 
 Please cite our paper if you use this code in your own work:
 
 ```
-@article{kipf2016semi,
-  title={Semi-Supervised Classification with Graph Convolutional Networks},
-  author={Kipf, Thomas N and Welling, Max},
-  journal={arXiv preprint arXiv:1609.02907},
-  year={2016}
+@article{chen2017stochastic,
+  title={Stochastic Training of Graph Convolutional Networks},
+  author={Chen, Jianfei and Zhu, Jun},
+  journal={arXiv preprint arXiv:1710.10568},
+  year={2017}
 }
 ```

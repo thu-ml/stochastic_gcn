@@ -9,7 +9,7 @@ import sys
 import tensorflow as tf
 import json
 from time import time
-import os
+import os, copy
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
@@ -184,6 +184,11 @@ def load_gcn_data(dataset_str):
 
 
 def load_graphsage_data(prefix, normalize=True):
+    version_info = map(int, nx.__version__.split('.'))
+    major = version_info[0]
+    minor = version_info[1]
+    assert (major <= 1) and (minor <= 11), "networkx major version must be <= 1.11 in order to load graphsage data"
+
     # Save normalized version
     if FLAGS.max_degree==-1:
         npz_file = prefix + '.npz'
@@ -211,14 +216,15 @@ def load_graphsage_data(prefix, normalize=True):
     
         G_data = json.load(open(prefix + "-G.json"))
         G = json_graph.node_link_graph(G_data)
-        if isinstance(G.nodes()[0], int):
-            conversion = lambda n : int(n)
-        else:
-            conversion = lambda n : n
     
         feats = np.load(prefix + "-feats.npy").astype(np.float32)
         id_map = json.load(open(prefix + "-id_map.json"))
+        if id_map.keys()[0].isdigit():
+            conversion = lambda n: int(n)
+        else:
+            conversion = lambda n: n
         id_map = {conversion(k):int(v) for k,v in id_map.iteritems()}
+
         walks = []
         class_map = json.load(open(prefix + "-class_map.json"))
         if isinstance(class_map.values()[0], list):
@@ -227,21 +233,38 @@ def load_graphsage_data(prefix, normalize=True):
             lab_conversion = lambda n : int(n)
     
         class_map = {conversion(k): lab_conversion(v) for k,v in class_map.iteritems()}
+
+        ## Remove all nodes that do not have val/test annotations
+        ## (necessary because of networkx weirdness with the Reddit data)
+        broken_count = 0
+        to_remove = []
+        for node in G.nodes():
+            if not id_map.has_key(node):
+            #if not G.node[node].has_key('val') or not G.node[node].has_key('test'):
+                to_remove.append(node)
+                broken_count += 1
+        for node in to_remove:
+            G.remove_node(node)
+        print("Removed {:d} nodes that lacked proper annotations due to networkx versioning issues".format(broken_count))
     
         # Construct adjacency matrix
         print("Loaded data ({} seconds).. now preprocessing..".format(time()-start_time))
         start_time = time()
     
-        edges      = [(id_map[edge[0]], id_map[edge[1]]) for edge in G.edges_iter()]
+        edges = []
+        for edge in G.edges():
+            if id_map.has_key(edge[0]) and id_map.has_key(edge[1]):
+                edges.append((id_map[edge[0]], id_map[edge[1]]))
+        print('{} edges'.format(len(edges)))
         num_data   = len(id_map)
 
         if FLAGS.max_degree != -1:
             print('Subsampling edges...')
             edges = subsample_edges(edges, num_data, FLAGS.max_degree)
 
-        val_data   = np.array([id_map[n] for n in G.nodes_iter() 
+        val_data   = np.array([id_map[n] for n in G.nodes() 
                                  if G.node[n]['val']], dtype=np.int32)
-        test_data  = np.array([id_map[n] for n in G.nodes_iter() 
+        test_data  = np.array([id_map[n] for n in G.nodes() 
                                  if G.node[n]['test']], dtype=np.int32)
         is_train   = np.ones((num_data), dtype=np.bool)
         is_train[val_data] = False
