@@ -6,6 +6,8 @@ Code for the paper [Stochastic Training for Graph Convolutional Networks](https:
 Make sure that you have valid c++11 and cuda compiler.
 
 ```bash
+pip install --upgrade pip
+pip install numpy scipy networkx==1.11 tensorflow-gpu scikit-learn
 python setup.py install
 cd gcn
 ./build.sh
@@ -37,7 +39,7 @@ To download the Citeseer, Cora, PubMed, PPI and Reddit dataset
 
 ## Run the demo
 
-We provide recipes for the Citeseer, Cora, PubMed, NELL, PPI, and Reddit dataset in the `config` folder. Please refer to our paper for the algorithms (CVD+PP typically works the best).
+We provide recipes for the Citeseer, Cora, PubMed, NELL, PPI, and Reddit dataset in the `config` folder. Please refer to our paper for the algorithms. Typically, CVD+PP has similar accuracy with Exact, but is faster.
 
 ```bash
 # Exact algorithm
