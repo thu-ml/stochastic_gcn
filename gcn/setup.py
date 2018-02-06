@@ -7,7 +7,7 @@ MKLROOT="/opt/intel/compilers_and_libraries_2017.1.132/linux/mkl"
 setup(
     cmdclass={'build_ext': build_ext},
     ext_modules=[Extension("scheduler",
-                           sources=["_scheduler.pyx", "scheduler.cpp"],
+                           sources=["_scheduler.pyx", "scheduler.cpp", "mult.cpp"],
                            language="c++",
                            extra_compile_args=["-std=c++11", "-fopenmp"],
                            extra_link_args=['-lgomp'],

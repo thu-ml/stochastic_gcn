@@ -10,7 +10,7 @@ from libcpp cimport bool
 cdef extern from "scheduler.h":
     cdef cppclass Scheduler:
         Scheduler() except +
-        Scheduler(float*, int*, int*, int, int, int, bool) except +
+        Scheduler(float*, int*, int*, int, int, int, bool, bool) except +
         void start_batch(int, int*)
         void expand(int)
         void seed(int)
@@ -32,12 +32,12 @@ cdef class PyScheduler:
     cdef int start
     cdef float t
 
-    def __init__(self, adj, labels, L, degrees, placeholders, seed, data=None, cv=False):
+    def __init__(self, adj, labels, L, degrees, placeholders, seed, data=None, cv=False, importance=False):
         cdef float[:] ad = adj.data
         cdef int[:]   ai = adj.indices
         cdef int[:]   ap = adj.indptr
         self.c_sch = Scheduler(&ad[0], &ai[0], &ap[0],
-                               labels.shape[0], adj.data.shape[0], L, cv)
+                               labels.shape[0], adj.data.shape[0], L, cv, importance)
         self.c_sch.seed(seed)
         self.labels = labels
         self.data = data
@@ -73,7 +73,8 @@ cdef class PyScheduler:
 
             ssz = self.c_sch.scales.size()
             scale = np.zeros((ssz), dtype=np.float32)
-            copy_float(scale, self.c_sch.scales.data(), ssz)
+            if ssz > 0:
+                copy_float(scale, self.c_sch.scales.data(), ssz)
             scales.append(scale)
 
             # adjs 

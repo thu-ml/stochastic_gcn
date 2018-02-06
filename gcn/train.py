@@ -11,6 +11,7 @@ from gcn.vrgcn import VRGCN
 from scheduler import PyScheduler
 from tensorflow.contrib.opt import ScipyOptimizerInterface
 import scipy.sparse as sp
+from scipy.sparse.linalg import norm as sparsenorm
 from stats import Stat
 
 # Set random seed
@@ -54,6 +55,8 @@ flags.DEFINE_bool('load', False, 'Load the model')
 flags.DEFINE_bool('det_dropout', False, 'Determinstic dropout')
 flags.DEFINE_bool('cvd', False, 'CV for Dropout. Only useful when --cv is present.')
 flags.DEFINE_bool('test_cvd', False, 'CV for Dropout. Only useful when --cv is present.')
+flags.DEFINE_bool('importance', False, 'Importance sampling')
+flags.DEFINE_bool('test_importance', False, 'Importance sampling')
 
 flags.DEFINE_integer('seed', 1, 'Random seed')
 flags.DEFINE_integer('max_degree', -1, 'Subsample the input. Maximum number of degree. For GraphSAGE.')
@@ -67,6 +70,7 @@ np.random.seed(FLAGS.seed)
 # Load data
 num_data, train_adj, full_adj, features, train_features, test_features, labels, train_d, val_d, test_d = \
         load_data(FLAGS.dataset)
+
 if FLAGS.gradvar:
     print('Analyze mode...')
     full_adj = train_adj.copy()
@@ -116,8 +120,8 @@ print('Finised in {} seconds'.format(time()-t))
 
 train_degrees   = np.array([FLAGS.degree]*L, dtype=np.int32)
 test_degrees    = np.array([FLAGS.test_degree]*test_L, dtype=np.int32)
-train_sch = PyScheduler(train_adj, labels, L, train_degrees, placeholders, FLAGS.seed, train_d, cv=FLAGS.cv)
-eval_sch  = PyScheduler(full_adj,  labels, test_L, test_degrees,  placeholders, FLAGS.seed, cv=FLAGS.test_cv)
+train_sch = PyScheduler(train_adj, labels, L, train_degrees, placeholders, FLAGS.seed, train_d, cv=FLAGS.cv, importance=FLAGS.importance)
+eval_sch  = PyScheduler(full_adj,  labels, test_L, test_degrees,  placeholders, FLAGS.seed, cv=FLAGS.test_cv, importance=FLAGS.test_importance)
 
 
 # Initialize session
@@ -185,6 +189,16 @@ def SGDTrain():
             tsch += time() - t1
             if feed_dict==None:
                 break
+            aa = feed_dict[placeholders['adj'][0]]
+            ff = feed_dict[placeholders['fields'][0]]
+            f0 = feed_dict[placeholders['fields'][1]]
+            #print('FF shape', ff.shape)
+            #for i in range(aa[0].shape[0]):
+            #    if aa[0][i,0] == 0:
+            #        print(aa[0][i], f0[aa[0][i,0]], ff[aa[0][i,1]])
+            #print(aa[0].shape)
+            #print(aa[1].sum())
+            #exit(0)
             feed_dict[placeholders['dropout']] = FLAGS.dropout
 
             # Training step
