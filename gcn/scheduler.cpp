@@ -23,9 +23,9 @@ Scheduler::Scheduler(float *adj_w, int *adj_i, int *adj_p, int num_data, int num
         for (int i = 0; i < num_data; i++)
             for (int p = adj_p[i]; p < adj_p[i+1]; p++)
                 importance[adj_i[p]] += adj_w[p] * adj_w[p];
-        float sum = 0;
-        for (int i = 0; i < num_data; i++)
-            sum += importance[i] = sqrt(importance[i]);
+        //float sum = 0;
+        //for (int i = 0; i < num_data; i++)
+        //    sum += importance[i] = sqrt(importance[i]);
         //for (int i = 0; i < num_data; i++)
         //    importance[i] = 1;
     } else {

@@ -189,9 +189,9 @@ def SGDTrain():
             tsch += time() - t1
             if feed_dict==None:
                 break
-            aa = feed_dict[placeholders['adj'][0]]
-            ff = feed_dict[placeholders['fields'][0]]
-            f0 = feed_dict[placeholders['fields'][1]]
+            #aa = feed_dict[placeholders['adj'][0]]
+            #ff = feed_dict[placeholders['fields'][0]]
+            #f0 = feed_dict[placeholders['fields'][1]]
             #print('FF shape', ff.shape)
             #for i in range(aa[0].shape[0]):
             #    if aa[0][i,0] == 0:

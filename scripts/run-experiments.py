@@ -1,15 +1,20 @@
 import os, sys
 
-datasets_runs    = [('reddit3', 1)] #[('citeseer', 10), ('cora', 10), ('pubmed', 10), ('nell', 10), ('ppi', 5), ('reddit', 5)]
+datasets_runs    = [('citeseer', 10), ('cora', 10), ('pubmed', 10), ('nell', 10), ('ppi', 5), ('reddit', 5)]
 gcn_datasets = set(['cora', 'citeseer', 'pubmed', 'nell'])
 preprocess  = ['True', 'False']
 dropout = [True, False]
-deg_cv_dropout_preprocess   = [(20, 'False', 'True', True), 
-                               #(20, 'False', 'True', False), 
-                               (1, 'False', 'True', False), 
-                               (1, 'False', 'True', True), #(1, False, 'Fast', True), 
-                               (1, 'True', 'True', True), (1, 'TrueD', 'True', True),  #(1, True, 'Fast', True),
-                               (20, 'False', 'False', True), (1, 'False', 'False', False), (1, 'False', 'False', True), (1, 'True', 'False', True)]
+deg_cv_dropout_preprocess   = [(20, 'False', 'True', True),  # Exact
+                               (1, 'False', 'True', False),  # NS
+                               (1, 'False', 'True', True),   # NS+PP
+                               (1, 'IS', 'True', True),      # IS+PP
+                               (1, 'True', 'True', True),    # CV+PP
+                               (1, 'TrueD', 'True', True),   # CVD+PP
+                               (20, 'False', 'False', True), # Exact
+                               (1, 'False', 'False', False), # NS
+                               (1, 'False', 'False', True),  # NS+PP
+                               (1, 'IS', 'False', True),     # IS+PP
+                               (1, 'True', 'False', True)]   # CV+PP
 test_exps = [('Exact', '--test_degree 10000'),
         ('NS',    '--test_degree 1 --nopreprocess --notest_preprocess'),
         ('NSPP',  '--test_degree 1'),
@@ -26,7 +31,9 @@ var_exps = [('VarTrainCV',  '--test_degree=10000 --dropout 0 --cv --degree=1'),
             ('DVarTrainCV', '--test_degree=10000 --cv --cvd --degree=1'),
             ('DVarCVD',     '--test_degree=10000 --load --gradvar --degree=1 --cv --cvd')]
 
-f = open('run.sh', 'w')
+fs = {}
+for d, _ in datasets_runs:
+    fs[d] = open('run_{}.sh'.format(d), 'w')
 ftest = open('test.sh', 'w')
 fvar = open('var.sh', 'w')
 for data, n_runs in datasets_runs:
@@ -45,7 +52,7 @@ for data, n_runs in datasets_runs:
                 epochs = 400
             elif data == 'ppi':
                 ndata  = 0
-                epochs = 800
+                epochs = 100
             else:
                 ndata  = int(0)
                 if pp==False and deg==1 and cv=='False':
@@ -57,12 +64,14 @@ for data, n_runs in datasets_runs:
                 cv_str = '--cv=False'
             elif cv=='True':
                 cv_str = '--cv=True'
+            elif cv=='IS':
+                cv_str = '--importance'
             else:
                 cv_str = '--cv --cvd'
     
             command = \
      'stdbuf -o 0 sh config/{}.config --early_stopping=1000000 --data={} --epochs={} {} --preprocess={} --degree={} {} --seed={} | tee {}'.format(data, ndata, epochs, dropout_str, pp, deg, cv_str, run, log_file)
-            f.write(command+'\n')
+            fs[data].write(command+'\n')
 
     log_file = 'logs/train_{}.log'.format(data)
     command = 'stdbuf -o 0 sh config/{}.config | tee {}'.format(data, log_file)
