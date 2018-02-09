@@ -1,6 +1,10 @@
 # Stochastic Training for Graph Convolutional Networks
 
-Code for the paper [Stochastic Training for Graph Convolutional Networks](https://arxiv.org/abs/1710.10568). The implementation is based on Thomas Kipf's [implementation](https://github.com/tkipf/gcn).
+Code for the paper [Stochastic Training for Graph Convolutional Networks](https://arxiv.org/abs/1710.10568). The implementation is based on Thomas Kipf's [implementation for graph convolutional networks](https://github.com/tkipf/gcn).
+
+## Requirements
+* tensorflow (>0.12)
+* networkx (<=1.11 for loading GraphSAGE datasets)
 
 ## Installation
 Make sure that you have valid c++11 and cuda compiler.
@@ -12,10 +16,6 @@ python setup.py install
 cd gcn
 ./build.sh
 ```
-
-## Requirements
-* tensorflow (>0.12)
-* networkx (<=1.11 for loading GraphSAGE datasets)
 
 ## Data
 
@@ -45,7 +45,7 @@ We provide recipes for the Citeseer, Cora, PubMed, NELL, PPI, and Reddit dataset
 # Exact algorithm
 config/cora.config
 # NS+PP algorithm
-config/cora.config --degree=1 --test_Degree=1
+config/cora.config --degree=1 --test_degree=1
 # CV+PP algorithm
 config/cora.config --cv --test_cv --degree=1 --test_degree=1 
 # CVD+PP algorithm
