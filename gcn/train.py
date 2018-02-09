@@ -64,6 +64,8 @@ flags.DEFINE_integer('max_degree', -1, 'Subsample the input. Maximum number of d
 flags.DEFINE_bool('gradvar', False, 'Output gradient variance')
 flags.DEFINE_bool('reverse', False, 'Original models')
 
+flags.DEFINE_bool('pp_nbr', True, 'Whether pre-process use neighbors')
+
 tf.set_random_seed(FLAGS.seed)
 np.random.seed(FLAGS.seed)
 

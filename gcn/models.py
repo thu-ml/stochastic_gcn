@@ -233,7 +233,7 @@ class GCN(Model):
 
         self.input_dim = features.shape[1]
         self_dim       = 0 if FLAGS.normalization=='gcn' else self.input_dim
-        if preprocess:
+        if preprocess and FLAGS.pp_nbr:
             self_features  = features[:,:self_dim]
             stacker        = (lambda x: sp.hstack(x).tocsr()) if self.sparse_input else np.hstack
             self.features = stacker((self_features, nbr_features))
@@ -268,6 +268,10 @@ class GCN(Model):
             for l in range(FLAGS.num_fc_layers):
                 input_dim = self.input_dim*dim_s if l==0 else FLAGS.hidden1
                 sparse_inputs = self.sparse_mm if l==0 else False
+                last_layer = self.L==0 and l+1==FLAGS.num_fc_layers
+                output_dim = self.output_dim if last_layer else FLAGS.hidden1
+                act        = (lambda x: x)   if last_layer else tf.nn.relu
+                layer_norm = False           if last_layer else FLAGS.layer_norm
                 if FLAGS.det_dropout:
                     self.layers.append(DetDropoutFC(keep_prob=1-self.placeholders['dropout'],
                                              input_dim=input_dim,
@@ -286,12 +290,12 @@ class GCN(Model):
                 else:
                     self.layers.append(Dropout(1-self.placeholders['dropout'], self.cvd))
                     self.layers.append(Dense(input_dim=input_dim,
-                                             output_dim=FLAGS.hidden1,
+                                             output_dim=output_dim,
                                              placeholders=self.placeholders,
-                                             act=tf.nn.relu,
+                                             act=act,
                                              logging=self.logging,
                                              sparse_inputs=sparse_inputs,
-                                             name='dense%d'%cnt, norm=FLAGS.layer_norm))
+                                             name='dense%d'%cnt, norm=layer_norm))
                 self.layer_comp.append((input_dim*FLAGS.hidden1, 0))
                 cnt += 1
 
