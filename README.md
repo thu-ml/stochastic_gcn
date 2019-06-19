@@ -57,10 +57,11 @@ config/cora.config --cv --cvd --test_cv --degree=1 --test_degree=1
 Please cite our paper if you use this code in your own work:
 
 ```
-@article{chen2017stochastic,
-  title={Stochastic Training of Graph Convolutional Networks},
-  author={Chen, Jianfei and Zhu, Jun},
-  journal={arXiv preprint arXiv:1710.10568},
-  year={2017}
+@inproceedings{chen2018stochastic,
+  title={Stochastic Training of Graph Convolutional Networks with Variance Reduction},
+  author={Chen, Jianfei and Zhu, Jun and Song, Le},
+  booktitle={International Conference on Machine Learning},
+  pages={941--949},
+  year={2018}
 }
 ```
