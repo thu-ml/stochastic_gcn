@@ -2,6 +2,8 @@
 
 Code for the paper [Stochastic Training for Graph Convolutional Networks](https://arxiv.org/abs/1710.10568). The implementation is based on Thomas Kipf's [implementation for graph convolutional networks](https://github.com/tkipf/gcn).
 
+*Update*: this repository is rather old. Here's an [unofficial implementation](https://github.com/THUDM/cogdl/tree/master/examples/VRGCN) based on PyTorch and [CogDL](https://github.com/THUDM/cogdl).
+
 ## Requirements
 * tensorflow (>0.12)
 * networkx (<=1.11 for loading GraphSAGE datasets)
